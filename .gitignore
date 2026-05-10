@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local run logs
+logs/
+
+# Data
+data/
+
+# Local config and secrets
+.env
+.env.*
+!.env.example
+config/watchlist.yaml
+
+# Local agent/project notes
+AGENTS.md
+README.md

@@ -1,0 +1,42 @@
+[project]
+name = "niuniu-stock-announcer"
+version = "0.1.0"
+description = "NiuNiu Stock Announcer, a local stock announcement monitoring workflow."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "a-share-announcement",
+    "loguru>=0.7.3",
+    "openai>=2.11.0",
+    "psycopg[binary]>=3.3.3",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "pymupdf4llm>=0.2.0",
+    "python-telegram-bot>=22.7",
+    "pyyaml>=6.0.3",
+    "typer>=0.25.1",
+]
+
+[project.scripts]
+niuniu-stock = "cli:app"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+]
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src"]
+sources = ["src"]
+
+[tool.uv.sources]
+a-share-announcement = { git = "https://github.com/mochenya/A-Share-Announcement.git" }
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+src = ["src"]
