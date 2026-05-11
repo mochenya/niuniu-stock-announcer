@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, timedelta
 from pathlib import Path
+from random import uniform
+from time import sleep
 
 from announcements.sources import (
     create_announcement_client,
@@ -31,6 +33,8 @@ from workflow.common import (
     require_database_url,
     short_error,
 )
+
+DEFAULT_SYNC_SOURCE_DELAY_RANGE_SECONDS = (0.5, 0.85)
 
 
 def sync_once(
@@ -72,6 +76,10 @@ def sync_once(
         for source, source_tasks in _group_tasks_by_source(tasks).items():
             with create_announcement_client(source) as client:
                 for index, task in enumerate(source_tasks, start=1):
+                    _wait_before_same_source_query(
+                        index=index,
+                        delay_seconds=runtime_config.sync_source_delay_seconds,
+                    )
                     report(
                         log_event(
                             "sync",
@@ -133,6 +141,24 @@ def sync_once(
             )
         )
     return summary
+
+
+def _wait_before_same_source_query(
+    *,
+    index: int,
+    delay_seconds: float | None,
+) -> None:
+    """同一公告源连续查询前做短暂冷却，降低被上游误判为高频请求的概率。"""
+    if index <= 1:
+        return
+    delay = (
+        uniform(*DEFAULT_SYNC_SOURCE_DELAY_RANGE_SECONDS)
+        if delay_seconds is None
+        else delay_seconds
+    )
+    if delay <= 0:
+        return
+    sleep(delay)
 
 
 def _persist_query_result(

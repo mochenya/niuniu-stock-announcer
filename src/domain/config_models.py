@@ -108,6 +108,7 @@ class RuntimeConfig(BaseModel):
     database_url: str | None = None
     watchlist_file: Path
     window_days: int = 3
+    sync_source_delay_seconds: float | None = None
     pdf_save_dir: Path = Path("data/pdf")
     llm_base_url: str = ""
     llm_api_key: str = ""
@@ -127,6 +128,22 @@ class RuntimeConfig(BaseModel):
     def _validate_window_days(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("WATCHLIST_WINDOW_DAYS must be greater than 0")
+        return value
+
+    @field_validator("sync_source_delay_seconds", mode="before")
+    @classmethod
+    def _normalize_sync_source_delay_seconds(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("sync_source_delay_seconds")
+    @classmethod
+    def _validate_sync_source_delay_seconds(cls, value: float | None) -> float | None:
+        if value is not None and value < 0:
+            raise ValueError(
+                "WATCHLIST_SYNC_SOURCE_DELAY_SECONDS must be greater than or equal to 0"
+            )
         return value
 
     @field_validator("llm_base_url", "llm_api_key", "llm_model", mode="before")

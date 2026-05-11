@@ -38,6 +38,10 @@ class _RuntimeSettings(BaseSettings):
         3,
         validation_alias="WATCHLIST_WINDOW_DAYS",
     )
+    sync_source_delay_seconds: str | None = Field(
+        None,
+        validation_alias="WATCHLIST_SYNC_SOURCE_DELAY_SECONDS",
+    )
     pdf_save_dir: str | None = Field(
         None,
         validation_alias="PDF_SAVE_DIR",
@@ -116,6 +120,7 @@ def load_runtime_config(
         database_url=settings.database_url,
         watchlist_file=watchlist_file,
         window_days=settings.window_days,
+        sync_source_delay_seconds=settings.sync_source_delay_seconds,
         pdf_save_dir=pdf_save_dir,
         llm_base_url=settings.llm_base_url,
         llm_api_key=settings.llm_api_key,
