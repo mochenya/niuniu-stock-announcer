@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import traceback
 from collections.abc import Sequence
+from contextlib import ExitStack
 from pathlib import Path
 
-from announcements.download import download_announcement_pdf
+from announcements.download import (
+    AnnouncementPdfClient,
+    download_announcement_pdf,
+)
+from announcements.sources import create_announcement_client
 from db.repository import AnnouncementRepository
 from domain.config_models import RuntimeConfig
+from domain.common import AnnouncementSource
 from domain.summary_models import PdfSummaryRequest
 from domain.workflow_models import (
     PipelineStageSummary,
@@ -41,7 +47,11 @@ def run_summary_candidates(
     report = progress or noop_progress
     result = PipelineStageSummary(candidate_count=len(candidates))
     report(log_event("summary", "running", total=len(candidates)))
-    with SummaryLLMClient(config=runtime_config) as llm_client:
+    with (
+        ExitStack() as source_client_stack,
+        SummaryLLMClient(config=runtime_config) as llm_client,
+    ):
+        source_clients: dict[AnnouncementSource, AnnouncementPdfClient] = {}
         for index, candidate in enumerate(candidates, start=1):
             if _run_summary_candidate(
                 repo,
@@ -49,6 +59,8 @@ def run_summary_candidates(
                 candidate=candidate,
                 runtime_config=runtime_config,
                 llm_client=llm_client,
+                source_client_stack=source_client_stack,
+                source_clients=source_clients,
                 progress=report,
                 index=index,
                 total=len(candidates),
@@ -74,6 +86,8 @@ def _run_summary_candidate(
     candidate: WorkflowCandidate,
     runtime_config: RuntimeConfig,
     llm_client: SummaryLLMClient,
+    source_client_stack: ExitStack,
+    source_clients: dict[AnnouncementSource, AnnouncementPdfClient],
     progress: ProgressReporter,
     index: int,
     total: int,
@@ -114,6 +128,11 @@ def _run_summary_candidate(
             pdf_path = download_announcement_pdf(
                 candidate.announcement,
                 save_dir=runtime_config.pdf_save_dir,
+                client=_get_source_client(
+                    candidate.source,
+                    source_client_stack=source_client_stack,
+                    source_clients=source_clients,
+                ),
             )
         progress(
             log_event(
@@ -179,6 +198,19 @@ def _run_summary_candidate(
             )
         )
         return False
+
+
+def _get_source_client(
+    source: AnnouncementSource,
+    *,
+    source_client_stack: ExitStack,
+    source_clients: dict[AnnouncementSource, AnnouncementPdfClient],
+) -> AnnouncementPdfClient:
+    client = source_clients.get(source)
+    if client is None:
+        client = source_client_stack.enter_context(create_announcement_client(source))
+        source_clients[source] = client
+    return client
 
 
 def _format_tokens(input_tokens: int | None, output_tokens: int | None) -> str:
