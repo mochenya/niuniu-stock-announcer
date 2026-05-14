@@ -5,8 +5,11 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from domain.common import (
+    AnnouncementSource,
+    DEFAULT_ANNOUNCEMENT_SOURCE_BY_MARKET,
     Market,
     build_stock_key,
+    validate_announcement_source_for_market,
     normalize_optional_text,
     normalize_required_text,
     normalize_text,
@@ -56,10 +59,32 @@ class StockConfig(BaseModel):
         return build_stock_key(market=self.market, stock_code=self.code)
 
 
+class AnnouncementSourceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sh: AnnouncementSource = DEFAULT_ANNOUNCEMENT_SOURCE_BY_MARKET["sh"]
+    sz: AnnouncementSource = DEFAULT_ANNOUNCEMENT_SOURCE_BY_MARKET["sz"]
+    bj: AnnouncementSource = DEFAULT_ANNOUNCEMENT_SOURCE_BY_MARKET["bj"]
+    hk: AnnouncementSource = DEFAULT_ANNOUNCEMENT_SOURCE_BY_MARKET["hk"]
+
+    @field_validator("sh", "sz", "bj", "hk", mode="before")
+    @classmethod
+    def _validate_market_source(cls, value: object, info):
+        market = info.field_name
+        return validate_announcement_source_for_market(
+            market=market,
+            source=value,
+        )
+
+    def source_for_market(self, market: Market) -> AnnouncementSource:
+        return getattr(self, market)
+
+
 class WatchlistConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     window_days: int | None = None
+    sources: AnnouncementSourceConfig = Field(default_factory=AnnouncementSourceConfig)
     filters: FilterConfig = Field(default_factory=FilterConfig)
     stocks: list[StockConfig] = Field(default_factory=list)
 

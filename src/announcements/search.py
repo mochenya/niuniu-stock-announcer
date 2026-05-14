@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from announcements.sources import (
-    announcement_source_for_market,
-)
 from domain.config_models import (
     StockConfig,
     WatchlistConfig,
 )
+from domain.common import AnnouncementSource
 from domain.search_models import (
     SearchTask,
 )
@@ -31,6 +29,7 @@ def build_search_tasks(config: WatchlistConfig) -> list[SearchTask]:
             tasks.append(
                 _build_task(
                     stock,
+                    announcement_source=config.sources.source_for_market(stock.market),
                     search_keyword=keyword,
                     title_exclude_keywords=exclude_keywords,
                 )
@@ -72,10 +71,10 @@ def query_search_task(
 def _build_task(
     stock: StockConfig,
     *,
+    announcement_source: AnnouncementSource,
     search_keyword: str | None,
     title_exclude_keywords: list[str],
 ) -> SearchTask:
-    announcement_source = announcement_source_for_market(stock.market)
     search_mode = "stock" if search_keyword is None else "stock_keyword"
     # 这里的 source_key 标识“配置中的一次查询”，不是返回的公告。
     # 这样重复同步可以更新同一条命中记录，同时保留是哪只股票和哪个关键词命中了公告。

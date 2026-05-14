@@ -1,12 +1,26 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, get_args
 
 # 这些 Literal 是当前版本的业务边界，新增市场或状态时先改这里。
 AnnouncementSource = Literal["cninfo", "sse", "szse"]
 Market = Literal["sh", "sz", "bj", "hk"]
 SearchMode = Literal["stock", "stock_keyword"]
 WorkflowStatus = Literal["pending", "running", "completed", "failed", "unknown"]
+
+SUPPORTED_ANNOUNCEMENT_SOURCES = frozenset[str](get_args(AnnouncementSource))
+DEFAULT_ANNOUNCEMENT_SOURCE_BY_MARKET: dict[Market, AnnouncementSource] = {
+    "hk": "cninfo",
+    "bj": "cninfo",
+    "sh": "sse",
+    "sz": "szse",
+}
+ALLOWED_ANNOUNCEMENT_SOURCES_BY_MARKET: dict[Market, frozenset[AnnouncementSource]] = {
+    "sh": frozenset({"cninfo", "sse"}),
+    "sz": frozenset({"cninfo", "szse"}),
+    "bj": frozenset({"cninfo"}),
+    "hk": frozenset({"cninfo"}),
+}
 
 
 def build_stock_key(*, market: Market | str, stock_code: str) -> str:
@@ -17,6 +31,34 @@ def build_announcement_key(
     *, source: AnnouncementSource | str, announcement_id: str
 ) -> str:
     return f"{source}:{announcement_id}"
+
+
+def normalize_announcement_source(
+    value: AnnouncementSource | str | object,
+) -> AnnouncementSource:
+    """把第三方模型或配置字符串中的来源值规范化成内部 Literal。"""
+    raw_value = getattr(value, "value", value)
+    normalized = str(raw_value).strip().lower()
+    if normalized not in SUPPORTED_ANNOUNCEMENT_SOURCES:
+        raise ValueError(f"unsupported announcement source: {value}")
+    return normalized  # type: ignore[return-value]
+
+
+def validate_announcement_source_for_market(
+    *,
+    market: Market,
+    source: AnnouncementSource | str | object,
+) -> AnnouncementSource:
+    """校验市场和公告源组合，避免配置出上游 SDK 不支持的路由。"""
+    normalized_source = normalize_announcement_source(source)
+    allowed_sources = ALLOWED_ANNOUNCEMENT_SOURCES_BY_MARKET[market]
+    if normalized_source not in allowed_sources:
+        allowed_text = ", ".join(sorted(allowed_sources))
+        raise ValueError(
+            f"unsupported announcement source for market {market}: "
+            f"{normalized_source}. Expected one of: {allowed_text}"
+        )
+    return normalized_source
 
 
 def normalize_text_list(value: object, *, field_name: str) -> list[str]:

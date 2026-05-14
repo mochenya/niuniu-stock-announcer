@@ -1,5 +1,12 @@
 window_days: 3
 
+sources:
+  # A 股可按市场切换交易所源或 cninfo；港股只能使用 cninfo。
+  sh: sse
+  sz: szse
+  bj: cninfo
+  hk: cninfo
+
 filters:
   title_exclude_keywords:
     - 业绩说明会
