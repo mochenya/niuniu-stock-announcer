@@ -4,6 +4,8 @@ import traceback
 from collections.abc import Sequence
 from contextlib import ExitStack
 from pathlib import Path
+from random import uniform
+from time import sleep
 
 from announcements.download import (
     AnnouncementPdfClient,
@@ -125,6 +127,7 @@ def _run_summary_candidate(
                     **candidate_log_fields(candidate),
                 )
             )
+            _wait_before_pdf_download(runtime_config.pdf_download_delay_seconds)
             pdf_path = download_announcement_pdf(
                 candidate.announcement,
                 save_dir=runtime_config.pdf_save_dir,
@@ -198,6 +201,14 @@ def _run_summary_candidate(
             )
         )
         return False
+
+
+def _wait_before_pdf_download(delay_seconds: tuple[float, float]) -> None:
+    min_delay, max_delay = delay_seconds
+    delay = uniform(min_delay, max_delay)
+    if delay <= 0:
+        return
+    sleep(delay)
 
 
 def _get_source_client(

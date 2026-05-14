@@ -46,6 +46,10 @@ class _RuntimeSettings(BaseSettings):
         None,
         validation_alias="PDF_SAVE_DIR",
     )
+    pdf_download_delay_seconds: str | None = Field(
+        "0.5-0.8",
+        validation_alias="WATCHLIST_PDF_DOWNLOAD_DELAY_SECONDS",
+    )
     llm_base_url: str = Field(
         "",
         validation_alias="LLM_BASE_URL",
@@ -122,6 +126,7 @@ def load_runtime_config(
         window_days=settings.window_days,
         sync_source_delay_seconds=settings.sync_source_delay_seconds,
         pdf_save_dir=pdf_save_dir,
+        pdf_download_delay_seconds=settings.pdf_download_delay_seconds,
         llm_base_url=settings.llm_base_url,
         llm_api_key=settings.llm_api_key,
         llm_model=settings.llm_model,

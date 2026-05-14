@@ -13,6 +13,8 @@ from domain.common import (
     normalize_text_list,
 )
 
+DEFAULT_PDF_DOWNLOAD_DELAY_SECONDS = (0.5, 0.8)
+
 
 class FilterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -110,6 +112,7 @@ class RuntimeConfig(BaseModel):
     window_days: int = 3
     sync_source_delay_seconds: float | None = None
     pdf_save_dir: Path = Path("data/pdf")
+    pdf_download_delay_seconds: tuple[float, float] = DEFAULT_PDF_DOWNLOAD_DELAY_SECONDS
     llm_base_url: str = ""
     llm_api_key: str = ""
     llm_model: str = ""
@@ -143,6 +146,43 @@ class RuntimeConfig(BaseModel):
         if value is not None and value < 0:
             raise ValueError(
                 "WATCHLIST_SYNC_SOURCE_DELAY_SECONDS must be greater than or equal to 0"
+            )
+        return value
+
+    @field_validator("pdf_download_delay_seconds", mode="before")
+    @classmethod
+    def _normalize_pdf_download_delay_seconds(
+        cls,
+        value: object,
+    ) -> tuple[float, float] | object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return DEFAULT_PDF_DOWNLOAD_DELAY_SECONDS
+            separator = "~" if "~" in normalized else "-"
+            parts = [part.strip() for part in normalized.split(separator, maxsplit=1)]
+            if len(parts) == 2:
+                return (float(parts[0]), float(parts[1]))
+            return (float(normalized), float(normalized))
+        if isinstance(value, int | float):
+            delay = float(value)
+            return (delay, delay)
+        return value
+
+    @field_validator("pdf_download_delay_seconds")
+    @classmethod
+    def _validate_pdf_download_delay_seconds(
+        cls,
+        value: tuple[float, float],
+    ) -> tuple[float, float]:
+        min_delay, max_delay = value
+        if min_delay < 0 or max_delay < 0:
+            raise ValueError(
+                "WATCHLIST_PDF_DOWNLOAD_DELAY_SECONDS must be greater than or equal to 0"
+            )
+        if min_delay > max_delay:
+            raise ValueError(
+                "WATCHLIST_PDF_DOWNLOAD_DELAY_SECONDS min cannot be greater than max"
             )
         return value
 
