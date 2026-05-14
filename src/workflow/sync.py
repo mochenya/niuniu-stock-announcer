@@ -56,8 +56,10 @@ def sync_once(
     effective_window_days = (
         window_days or watchlist_config.window_days or runtime_config.window_days
     )
-    window_end = date.today()
-    window_start = window_end - timedelta(days=effective_window_days - 1)
+    today = date.today()
+    window_start = today - timedelta(days=effective_window_days)
+    # 交易所后台按公告日期提前一天发布，查询结束日固定多看一天，避免每日任务漏掉明日公告。
+    window_end = today + timedelta(days=1)
     tasks = build_search_tasks(watchlist_config)
     summary = SyncSummary()
     report(
