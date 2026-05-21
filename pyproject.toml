@@ -14,6 +14,7 @@ dependencies = [
     "pymupdf4llm>=0.2.0",
     "python-telegram-bot>=22.7",
     "pyyaml>=6.0.3",
+    "ruamel-yaml>=0.19.1",
     "typer>=0.25.1",
 ]
 
