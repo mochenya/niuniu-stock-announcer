@@ -29,10 +29,17 @@ from summary.prompts import (
 
 SUMMARY_EXTRA_BODY = {"reasoning_split": True}
 REASONING_EFFORT = "high"
-UNSUPPORTED_REQUEST_PARAM_MARKERS = (
+# 用于识别 OpenAI 兼容服务不支持某些请求参数的错误关键词。
+UNSUPPORTED_PARAM_MARKERS = (
+    "unsupported parameter",
+    "is not supported",
+    "unknown parameter",
+    "invalid parameter",
+    "unrecognized request argument",
     "reasoning_effort",
     "reasoning_split",
     "extra_body",
+    "temperature",
 )
 
 
@@ -125,33 +132,38 @@ class SummaryLLMClient:
         )
 
     def _create_completion_with_compat(self, messages: Sequence[dict[str, str]]) -> Any:
-        """优先使用扩展参数请求；兼容服务不支持时自动降级重试一次。"""
-        try:
-            return self._create_completion(messages, include_extended_options=True)
-        except openai.OpenAIError as exc:
-            if not _is_unsupported_request_param_error(exc):
-                raise SummaryError("REQUEST", _format_openai_error(exc)) from exc
-            # 兼容不支持 reasoning_effort 或 extra_body 的 OpenAI 兼容服务。
+        """逐级降级请求参数，兼容不同 OpenAI 兼容服务的参数支持差异。
+
+        降级顺序：全参数 → 去掉 reasoning/extra_body → 再去掉 temperature。
+        """
+        levels: list[dict[str, bool]] = [
+            {"include_extended_options": True, "include_temperature": True},
+            {"include_extended_options": False, "include_temperature": True},
+            {"include_extended_options": False, "include_temperature": False},
+        ]
+        for i, kwargs in enumerate(levels):
             try:
-                return self._create_completion(messages, include_extended_options=False)
-            except openai.OpenAIError as fallback_exc:
-                raise SummaryError(
-                    "REQUEST", _format_openai_error(fallback_exc)
-                ) from fallback_exc
+                return self._create_completion(messages, **kwargs)
+            except openai.OpenAIError as exc:
+                is_last = i == len(levels) - 1
+                if is_last or not _is_unsupported_param_error(exc):
+                    raise SummaryError("REQUEST", _format_openai_error(exc)) from exc
 
     def _create_completion(
         self,
         messages: Sequence[dict[str, str]],
         *,
         include_extended_options: bool,
+        include_temperature: bool = True,
     ) -> Any:
         """构造并发送 Chat Completions 请求。"""
         config = self._get_config()
         request_kwargs: dict[str, Any] = {
             "model": config.llm_model,
-            "temperature": config.llm_temperature,
             "messages": clone_messages(messages),
         }
+        if include_temperature:
+            request_kwargs["temperature"] = config.llm_temperature
         if include_extended_options:
             request_kwargs["reasoning_effort"] = REASONING_EFFORT
             request_kwargs["extra_body"] = SUMMARY_EXTRA_BODY
@@ -224,9 +236,9 @@ def _extract_message_content(message: object) -> str:
     return raw_content
 
 
-def _is_unsupported_request_param_error(exc: Exception) -> bool:
+def _is_unsupported_param_error(exc: Exception) -> bool:
     message = _format_openai_error(exc).lower()
-    return any(marker in message for marker in UNSUPPORTED_REQUEST_PARAM_MARKERS)
+    return any(marker in message for marker in UNSUPPORTED_PARAM_MARKERS)
 
 
 def _format_openai_error(exc: Exception) -> str:
