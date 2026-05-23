@@ -26,7 +26,7 @@ def retry_failed_summary_command(
 ) -> None:
     from workflow.pending import retry_failed_summaries
 
-    report = setup_command_logging(
+    context = setup_command_logging(
         command="retry-failed-summary",
         env_file=env_file,
         limit=limit,
@@ -34,12 +34,19 @@ def retry_failed_summary_command(
         log_dir=log_dir,
         no_log_file=no_log_file,
     )
-    result = retry_failed_summaries(
-        env_file=env_file,
-        limit=limit,
-        progress=report,
-    )
-    report_stage_result(report, "retry-failed", "summary", result)
+    try:
+        result = retry_failed_summaries(
+            env_file=env_file,
+            limit=limit,
+            progress=context.report,
+        )
+        context.mark_stage_result("summary", result)
+        report_stage_result(context.report, "retry-failed", "summary", result)
+    except BaseException as exc:
+        context.mark_failed(exc)
+        raise
+    finally:
+        context.notify_finished()
 
 
 @retry_failed_app.command("delivery")
@@ -52,7 +59,7 @@ def retry_failed_delivery_command(
 ) -> None:
     from workflow.pending import retry_failed_deliveries
 
-    report = setup_command_logging(
+    context = setup_command_logging(
         command="retry-failed-delivery",
         env_file=env_file,
         limit=limit,
@@ -60,12 +67,19 @@ def retry_failed_delivery_command(
         log_dir=log_dir,
         no_log_file=no_log_file,
     )
-    result = retry_failed_deliveries(
-        env_file=env_file,
-        limit=limit,
-        progress=report,
-    )
-    report_stage_result(report, "retry-failed", "delivery", result)
+    try:
+        result = retry_failed_deliveries(
+            env_file=env_file,
+            limit=limit,
+            progress=context.report,
+        )
+        context.mark_stage_result("delivery", result)
+        report_stage_result(context.report, "retry-failed", "delivery", result)
+    except BaseException as exc:
+        context.mark_failed(exc)
+        raise
+    finally:
+        context.notify_finished()
 
 
 @retry_failed_app.command("all")
@@ -78,7 +92,7 @@ def retry_failed_all_command(
 ) -> None:
     from workflow.pending import retry_failed_all
 
-    report = setup_command_logging(
+    context = setup_command_logging(
         command="retry-failed-all",
         env_file=env_file,
         limit=limit,
@@ -86,9 +100,21 @@ def retry_failed_all_command(
         log_dir=log_dir,
         no_log_file=no_log_file,
     )
-    summary_result, delivery_result = retry_failed_all(
-        env_file=env_file,
-        limit=limit,
-        progress=report,
-    )
-    report_pipeline_result(report, "retry-failed", summary_result, delivery_result)
+    try:
+        summary_result, delivery_result = retry_failed_all(
+            env_file=env_file,
+            limit=limit,
+            progress=context.report,
+        )
+        context.mark_pipeline_result(summary_result, delivery_result)
+        report_pipeline_result(
+            context.report,
+            "retry-failed",
+            summary_result,
+            delivery_result,
+        )
+    except BaseException as exc:
+        context.mark_failed(exc)
+        raise
+    finally:
+        context.notify_finished()

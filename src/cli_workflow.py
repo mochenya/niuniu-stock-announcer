@@ -63,7 +63,7 @@ def sync(
 ) -> None:
     from workflow.sync import sync_once
 
-    report = setup_command_logging(
+    context = setup_command_logging(
         command="sync",
         env_file=env_file,
         config_file=config_file,
@@ -72,13 +72,20 @@ def sync(
         log_dir=log_dir,
         no_log_file=no_log_file,
     )
-    summary = sync_once(
-        env_file=env_file,
-        config_file=config_file,
-        window_days=window_days,
-        progress=report,
-    )
-    report_sync_finished(report, summary)
+    try:
+        summary = sync_once(
+            env_file=env_file,
+            config_file=config_file,
+            window_days=window_days,
+            progress=context.report,
+        )
+        context.mark_sync_result(summary)
+        report_sync_finished(context.report, summary)
+    except BaseException as exc:
+        context.mark_failed(exc)
+        raise
+    finally:
+        context.notify_finished()
 
 
 def run(
@@ -93,7 +100,7 @@ def run(
     from workflow.pending import run_new_workflow
     from workflow.sync import sync_once
 
-    report = setup_command_logging(
+    context = setup_command_logging(
         command="run",
         env_file=env_file,
         config_file=config_file,
@@ -103,51 +110,59 @@ def run(
         log_dir=log_dir,
         no_log_file=no_log_file,
     )
-    sync_summary = sync_once(
-        env_file=env_file,
-        config_file=config_file,
-        window_days=window_days,
-        progress=report,
-    )
-    report(
-        log_event(
-            "run",
-            "sync_finished",
-            fetched=sync_summary.fetched_count,
-            filtered=sync_summary.filtered_hits,
-            seeded=sync_summary.seeded_summaries,
-            new_refs=len(sync_summary.new_refs),
-            errors=len(sync_summary.errors),
+    try:
+        sync_summary = sync_once(
+            env_file=env_file,
+            config_file=config_file,
+            window_days=window_days,
+            progress=context.report,
         )
-    )
-    if not sync_summary.new_refs:
-        report(
+        context.mark_sync_result(sync_summary, include_new_refs=True)
+        context.report(
             log_event(
                 "run",
-                "no_new_records",
+                "sync_finished",
                 fetched=sync_summary.fetched_count,
                 filtered=sync_summary.filtered_hits,
                 seeded=sync_summary.seeded_summaries,
+                new_refs=len(sync_summary.new_refs),
                 errors=len(sync_summary.errors),
             )
         )
-        return
-    report(
-        log_event(
-            "run",
-            "workflow",
-            mode="new-only",
-            new_refs=len(sync_summary.new_refs),
-            limit=limit or "-",
+        if not sync_summary.new_refs:
+            context.report(
+                log_event(
+                    "run",
+                    "no_new_records",
+                    fetched=sync_summary.fetched_count,
+                    filtered=sync_summary.filtered_hits,
+                    seeded=sync_summary.seeded_summaries,
+                    errors=len(sync_summary.errors),
+                )
+            )
+            return
+        context.report(
+            log_event(
+                "run",
+                "workflow",
+                mode="new-only",
+                new_refs=len(sync_summary.new_refs),
+                limit=limit or "-",
+            )
         )
-    )
-    summary_result, delivery_result = run_new_workflow(
-        refs=sync_summary.new_refs,
-        env_file=env_file,
-        limit=limit,
-        progress=report,
-    )
-    report_pipeline_result(report, "run", summary_result, delivery_result)
+        summary_result, delivery_result = run_new_workflow(
+            refs=sync_summary.new_refs,
+            env_file=env_file,
+            limit=limit,
+            progress=context.report,
+        )
+        context.mark_pipeline_result(summary_result, delivery_result)
+        report_pipeline_result(context.report, "run", summary_result, delivery_result)
+    except BaseException as exc:
+        context.mark_failed(exc)
+        raise
+    finally:
+        context.notify_finished()
 
 
 def process_pending_command(
@@ -159,7 +174,7 @@ def process_pending_command(
 ) -> None:
     from workflow.pending import process_pending
 
-    report = setup_command_logging(
+    context = setup_command_logging(
         command="process-pending",
         env_file=env_file,
         limit=limit,
@@ -167,9 +182,21 @@ def process_pending_command(
         log_dir=log_dir,
         no_log_file=no_log_file,
     )
-    summary_result, delivery_result = process_pending(
-        env_file=env_file,
-        limit=limit,
-        progress=report,
-    )
-    report_pipeline_result(report, "process-pending", summary_result, delivery_result)
+    try:
+        summary_result, delivery_result = process_pending(
+            env_file=env_file,
+            limit=limit,
+            progress=context.report,
+        )
+        context.mark_pipeline_result(summary_result, delivery_result)
+        report_pipeline_result(
+            context.report,
+            "process-pending",
+            summary_result,
+            delivery_result,
+        )
+    except BaseException as exc:
+        context.mark_failed(exc)
+        raise
+    finally:
+        context.notify_finished()

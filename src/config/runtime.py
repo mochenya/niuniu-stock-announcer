@@ -14,6 +14,7 @@ from config.paths import (
 from domain.config_models import (
     RuntimeConfig,
     TelegramChannelConfig,
+    TelegramRunLogSettings,
     TelegramSettings,
 )
 
@@ -94,6 +95,22 @@ class _RuntimeSettings(BaseSettings):
         "",
         validation_alias="TELEGRAM_HK_TOPIC_URL",
     )
+    telegram_run_log_enabled: bool = Field(
+        False,
+        validation_alias="TELEGRAM_RUN_LOG_ENABLED",
+    )
+    telegram_run_log_bot_token: str = Field(
+        "",
+        validation_alias="TELEGRAM_RUN_LOG_BOT_TOKEN",
+    )
+    telegram_run_log_target: str = Field(
+        "",
+        validation_alias="TELEGRAM_RUN_LOG_TARGET",
+    )
+    telegram_run_log_attach_file: bool = Field(
+        True,
+        validation_alias="TELEGRAM_RUN_LOG_ATTACH_FILE",
+    )
 
 
 def load_runtime_config(
@@ -143,6 +160,12 @@ def load_runtime_config(
                 bot_token=settings.telegram_hk_bot_token,
                 topic_url=settings.telegram_hk_topic_url,
             ),
+        ),
+        telegram_run_log=TelegramRunLogSettings(
+            enabled=settings.telegram_run_log_enabled,
+            bot_token=settings.telegram_run_log_bot_token,
+            target=settings.telegram_run_log_target,
+            attach_file=settings.telegram_run_log_attach_file,
         ),
     )
     if require_database and not config.database_url:

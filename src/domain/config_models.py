@@ -129,6 +129,20 @@ class TelegramSettings(BaseModel):
         return value
 
 
+class TelegramRunLogSettings(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = False
+    bot_token: str = ""
+    target: str = ""
+    attach_file: bool = True
+
+    @field_validator("bot_token", "target", mode="before")
+    @classmethod
+    def _normalize_text_fields(cls, value: object, info) -> str:
+        return normalize_text(value, field_name=info.field_name)
+
+
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -145,6 +159,9 @@ class RuntimeConfig(BaseModel):
     llm_timeout: float = 30
     llm_max_retries: int = 2
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    telegram_run_log: TelegramRunLogSettings = Field(
+        default_factory=TelegramRunLogSettings
+    )
 
     @field_validator("database_url", mode="before")
     @classmethod
