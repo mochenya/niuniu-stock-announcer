@@ -2,18 +2,18 @@
 
 set -Eeuo pipefail
 
-script_dir="${0:A:h}"
-project_root="${script_dir:h}"
-home_dir="${HOME:-${project_root:h:h}}"
+readonly script_dir="${0:A:h}"
+readonly project_root="${script_dir:h}"
+readonly home_dir="${HOME:-${project_root:h:h}}"
 
 # cron 默认环境很薄，尤其不会继承交互式 zsh 里的 PATH。
 export PATH="${home_dir}/.local/bin:${home_dir}/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${PATH:-}"
 
 uv_bin="${UV_BIN:-${home_dir}/.local/bin/uv}"
-env_file="${RUN_WORKFLOW_ENV_FILE:-${project_root}/.env}"
-watchlist_file="${RUN_WORKFLOW_WATCHLIST_FILE:-${project_root}/config/watchlist.yaml}"
-cli_log_dir="${RUN_WORKFLOW_CLI_LOG_DIR:-${project_root}/logs/runs}"
-lock_file="${RUN_WORKFLOW_LOCK_FILE:-${project_root}/logs/run_workflow.lock}"
+readonly env_file="${RUN_WORKFLOW_ENV_FILE:-${project_root}/.env}"
+readonly watchlist_file="${RUN_WORKFLOW_WATCHLIST_FILE:-${project_root}/config/watchlist.yaml}"
+readonly cli_log_dir="${RUN_WORKFLOW_CLI_LOG_DIR:-${project_root}/logs/runs}"
+readonly lock_file="${RUN_WORKFLOW_LOCK_FILE:-${project_root}/logs/run_workflow.lock}"
 lock_fd=""
 
 cd "$project_root" || exit 1
@@ -50,7 +50,6 @@ acquire_lock() {
     return 0
   fi
 
-  mkdir -p "$(dirname "$lock_file")"
   exec {lock_fd}>"$lock_file"
   if ! flock -n "$lock_fd"; then
     echo "skip: another run_workflow.sh process is still running" >&2
@@ -64,6 +63,7 @@ resolve_uv_bin || die "uv binary not found or not executable: $uv_bin. Set UV_BI
 [[ -f "$env_file" ]] || die ".env not found: $env_file"
 [[ -f "$watchlist_file" ]] || die "watchlist YAML not found: $watchlist_file"
 
+mkdir -p "$cli_log_dir" "${lock_file:h}"
 acquire_lock
 
 PYTHONUNBUFFERED=1 "$uv_bin" run --locked --project "$project_root" \
@@ -72,3 +72,9 @@ PYTHONUNBUFFERED=1 "$uv_bin" run --locked --project "$project_root" \
   --config-file "$watchlist_file" \
   --log-dir "$cli_log_dir" \
   "$@"
+
+PYTHONUNBUFFERED=1 "$uv_bin" run --locked --project "$project_root" \
+  niuniu-stock retry-failed all \
+  --env-file "$env_file" \
+  --config-file "$watchlist_file" \
+  --log-dir "$cli_log_dir"
