@@ -35,6 +35,7 @@ def build_workflow_candidate(row: dict[str, Any]) -> WorkflowCandidate:
         primary_hit_id=row["primary_hit_id"],
         search_keyword=row.get("search_keyword"),
         summary_status=row["summary_status"],
+        summary_failure_count=row.get("summary_failure_count", 0) or 0,
         pdf_local_path=None
         if row["pdf_local_path"] is None
         else Path(row["pdf_local_path"]),

@@ -63,6 +63,7 @@ class WorkflowCandidate(BaseModel):
     primary_hit_id: int | None = None
     search_keyword: str | None = None
     summary_status: WorkflowStatus | None = None
+    summary_failure_count: int = 0
     pdf_local_path: Path | None = None
     summary_json: dict[str, object] | None = None
     summary_text: str | None = None

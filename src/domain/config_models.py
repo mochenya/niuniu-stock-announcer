@@ -158,6 +158,7 @@ class RuntimeConfig(BaseModel):
     llm_temperature: float = 0
     llm_timeout: float = 30
     llm_max_retries: int = 2
+    summary_max_failures: int = 3
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     telegram_run_log: TelegramRunLogSettings = Field(
         default_factory=TelegramRunLogSettings
@@ -252,4 +253,11 @@ class RuntimeConfig(BaseModel):
     def _validate_llm_max_retries(cls, value: int) -> int:
         if value < 0:
             raise ValueError("LLM_MAX_RETRIES must be greater than or equal to 0")
+        return value
+
+    @field_validator("summary_max_failures")
+    @classmethod
+    def _validate_summary_max_failures(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("WATCHLIST_SUMMARY_MAX_FAILURES must be greater than 0")
         return value

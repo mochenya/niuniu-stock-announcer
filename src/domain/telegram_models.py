@@ -36,7 +36,7 @@ class TelegramSummaryPayload(BaseModel):
     stock_key: str
     company_name: str
     announcement: BusinessAnnouncement
-    summary: AnnouncementSummary
+    summary: AnnouncementSummary | None = None
     search_keyword: str | None = None
 
 

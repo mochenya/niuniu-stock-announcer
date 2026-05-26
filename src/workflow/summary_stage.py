@@ -41,10 +41,13 @@ def run_summary_candidates(
     candidates: Sequence[WorkflowCandidate],
     runtime_config: RuntimeConfig,
     progress: ProgressReporter | None = None,
+    increment_failure_count_on_failure: bool = False,
 ) -> PipelineStageSummary:
     """依次处理摘要候选，并复用同一个 LLM 客户端连接。
 
     调用方负责提供已筛好的候选集合；本函数只负责阶段执行和结果计数。
+    increment_failure_count_on_failure=True 用于 retry 路径，让本轮失败计入
+    summary_failure_count，下一轮 retry 入口据此判断是否转 skipped。
     """
     report = progress or noop_progress
     result = PipelineStageSummary(candidate_count=len(candidates))
@@ -66,6 +69,7 @@ def run_summary_candidates(
                 progress=report,
                 index=index,
                 total=len(candidates),
+                increment_failure_count_on_failure=increment_failure_count_on_failure,
             ):
                 result.completed_count += 1
             else:
@@ -93,6 +97,7 @@ def _run_summary_candidate(
     progress: ProgressReporter,
     index: int,
     total: int,
+    increment_failure_count_on_failure: bool = False,
 ) -> bool:
     """处理单条摘要候选。
 
@@ -188,6 +193,7 @@ def _run_summary_candidate(
             failure_reason=serialize_summary_error(exc),
             failure_log=traceback.format_exc(),
             pdf_local_path=pdf_path,
+            increment_failure_count=increment_failure_count_on_failure,
         )
         conn.commit()
         progress(

@@ -19,6 +19,12 @@ FULL_STOCK_CODE_PREFIXES = {
 
 def format_telegram_summary_text(payload: TelegramSummaryPayload) -> str:
     lines = _build_message_header_lines(payload)
+    if payload.summary is None:
+        # 摘要多次失败被放弃后走纯 PDF 降级，文本里明确告知订阅者，避免误以为是
+        # 正常推送的新公告类型。
+        lines.append("")
+        lines.append("⚠️ 摘要生成失败，请直接查看 PDF。")
+        return "\n".join(lines)
     tags = " ".join(_format_tag(tag) for tag in payload.summary.tags)
     lines.append(f"🏷 标签: {tags}")
     lines.append("")

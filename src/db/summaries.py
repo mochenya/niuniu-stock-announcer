@@ -128,8 +128,13 @@ class SummaryRepository(RepositoryBase):
         failure_reason: str,
         failure_log: str,
         pdf_local_path: str | Path | None = None,
+        increment_failure_count: bool = False,
     ) -> None:
-        """记录摘要失败；若 PDF 已下载成功则保留本地路径，便于重试复用。"""
+        """记录摘要失败；若 PDF 已下载成功则保留本地路径，便于重试复用。
+
+        increment_failure_count=True 时同步把失败次数 +1；正常 run 阶段不计数，
+        只有 retry 路径下的失败需要累计，避免无限重试同一条摘要。
+        """
         self._conn.execute(
             """
             UPDATE announcement_summaries
@@ -137,6 +142,8 @@ class SummaryRepository(RepositoryBase):
                 pdf_local_path = COALESCE(%s, pdf_local_path),
                 failure_reason = %s,
                 failure_log = %s,
+                summary_failure_count = summary_failure_count
+                    + CASE WHEN %s THEN 1 ELSE 0 END,
                 updated_at = now()
             WHERE announcement_source = %s AND announcement_id = %s
             """,
@@ -144,7 +151,35 @@ class SummaryRepository(RepositoryBase):
                 None if pdf_local_path is None else str(pdf_local_path),
                 failure_reason,
                 failure_log,
+                increment_failure_count,
                 normalize_announcement_source(source),
                 announcement_id,
             ),
         )
+
+    def mark_summary_skipped(
+        self,
+        *,
+        source: AnnouncementSource | str,
+        announcement_id: str,
+    ) -> None:
+        """超过最大失败次数时把 failed 记录置为 skipped，让投递阶段走 PDF 降级。
+
+        WHERE 限定 status='failed'，确保只有真正用尽重试预算的记录会被降级，
+        防止误把 running/completed 行强制改写。
+        """
+        cursor = self._conn.execute(
+            """
+            UPDATE announcement_summaries
+            SET status = 'skipped',
+                updated_at = now()
+            WHERE announcement_source = %s
+              AND announcement_id = %s
+              AND status = 'failed'
+            """,
+            (normalize_announcement_source(source), announcement_id),
+        )
+        if cursor.rowcount == 0:
+            raise LookupError(
+                f"cannot skip summary in current status: {source}/{announcement_id}"
+            )

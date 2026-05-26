@@ -208,10 +208,18 @@ def _run_delivery_candidate(
 
 
 def _build_telegram_payload(candidate: WorkflowCandidate) -> TelegramSummaryPayload:
-    """把数据库候选转换为 Telegram 发送载荷，并校验摘要字段可用。"""
-    stored_summary = candidate.stored_summary
-    if stored_summary is None:
-        raise ValueError(f"summary is unavailable: {candidate.announcement_id}")
+    """把数据库候选转换为 Telegram 发送载荷。
+
+    用 summary_status 作为单一真值源：skipped 一律 summary=None 走 PDF 降级，
+    避免 summary_text 等历史字段残留时被误当作有效摘要发送；非 skipped 状态
+    则必须有可用摘要，否则视为数据异常报错。
+    """
+    if candidate.summary_status == "skipped":
+        summary = None
+    else:
+        summary = candidate.stored_summary
+        if summary is None:
+            raise ValueError(f"summary is unavailable: {candidate.announcement_id}")
     return TelegramSummaryPayload(
         source=candidate.source,
         announcement_id=candidate.announcement_id,
@@ -220,7 +228,7 @@ def _build_telegram_payload(candidate: WorkflowCandidate) -> TelegramSummaryPayl
         stock_key=candidate.stock_key,
         company_name=candidate.company_name,
         announcement=candidate.announcement,
-        summary=stored_summary,
+        summary=summary,
         search_keyword=candidate.search_keyword,
     )
 

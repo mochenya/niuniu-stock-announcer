@@ -28,15 +28,21 @@ class TelegramDeliveryRepository(RepositoryBase):
         statuses: Sequence[WorkflowStatus] = ("pending",),
         limit: int | None = None,
     ) -> list[WorkflowCandidate]:
-        """只返回摘要和 PDF 均已准备好的投递候选。
+        """只返回摘要可用、PDF 已下载的投递候选。
 
-        这里是投递前最后一道数据完整性筛选，调用方无需重复判断摘要字段。
+        摘要要么是 completed 且字段齐全，要么是 skipped——后者意味着 LLM 多次
+        失败已放弃，投递阶段会以纯 PDF 降级方式发送。两类候选都强制要求本地
+        PDF 存在。
         """
         where = [
-            "s.status = 'completed'",
-            "s.summary_text IS NOT NULL",
             "s.pdf_local_path IS NOT NULL",
-            "jsonb_array_length(COALESCE(s.summary_tags, '[]'::jsonb)) BETWEEN 3 AND 6",
+            "("
+            "(s.status = 'completed'"
+            " AND s.summary_text IS NOT NULL"
+            " AND jsonb_array_length(COALESCE(s.summary_tags, '[]'::jsonb))"
+            " BETWEEN 3 AND 6)"
+            " OR s.status = 'skipped'"
+            ")",
             "d.status = ANY(%s)",
         ]
         params: list[Any] = [list(statuses)]

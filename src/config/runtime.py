@@ -75,6 +75,10 @@ class _RuntimeSettings(BaseSettings):
         2,
         validation_alias="LLM_MAX_RETRIES",
     )
+    summary_max_failures: int = Field(
+        3,
+        validation_alias="WATCHLIST_SUMMARY_MAX_FAILURES",
+    )
     telegram_timeout: float = Field(
         30,
         validation_alias="TELEGRAM_TIMEOUT",
@@ -150,6 +154,7 @@ def load_runtime_config(
         llm_temperature=settings.llm_temperature,
         llm_timeout=settings.llm_timeout,
         llm_max_retries=settings.llm_max_retries,
+        summary_max_failures=settings.summary_max_failures,
         telegram=TelegramSettings(
             timeout=settings.telegram_timeout,
             a_share=TelegramChannelConfig(

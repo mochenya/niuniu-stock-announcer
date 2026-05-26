@@ -17,12 +17,16 @@ from domain.workflow_models import (
 )
 from workflow.common import (
     ProgressReporter,
+    candidate_log_fields,
     dedupe_candidates,
     dedupe_refs,
+    noop_progress,
     require_database_url,
 )
 from workflow.delivery_stage import run_delivery_candidates
 from workflow.summary_stage import run_summary_candidates
+from domain.workflow_models import WorkflowCandidate
+from log.events import log_event
 
 
 @dataclass(frozen=True)
@@ -158,12 +162,20 @@ def retry_failed_summaries(
             statuses=("failed",),
             limit=limit,
         )
+        candidates = _bump_and_skip_exhausted(
+            resources.repo,
+            conn=resources.conn,
+            candidates=candidates,
+            max_failures=resources.runtime_config.summary_max_failures,
+            progress=progress or noop_progress,
+        )
         return run_summary_candidates(
             resources.repo,
             conn=resources.conn,
             candidates=candidates,
             runtime_config=resources.runtime_config,
             progress=progress,
+            increment_failure_count_on_failure=True,
         )
 
 
@@ -213,12 +225,20 @@ def retry_failed_all(
             statuses=("failed",),
             limit=limit,
         )
+        summary_candidates = _bump_and_skip_exhausted(
+            resources.repo,
+            conn=resources.conn,
+            candidates=summary_candidates,
+            max_failures=resources.runtime_config.summary_max_failures,
+            progress=progress or noop_progress,
+        )
         summary_result = run_summary_candidates(
             resources.repo,
             conn=resources.conn,
             candidates=summary_candidates,
             runtime_config=resources.runtime_config,
             progress=progress,
+            increment_failure_count_on_failure=True,
         )
         successful_refs = [candidate.ref for candidate in summary_candidates]
         delivery_candidates = resources.repo.list_delivery_candidates(
@@ -240,3 +260,40 @@ def retry_failed_all(
             progress=progress,
         )
     return summary_result, delivery_result
+
+
+def _bump_and_skip_exhausted(
+    repo: AnnouncementRepository,
+    *,
+    conn,
+    candidates: Sequence[WorkflowCandidate],
+    max_failures: int,
+    progress: ProgressReporter,
+) -> list[WorkflowCandidate]:
+    """retry 入口的预处理：把已达阈值的候选转为 skipped，剩余的进入正常重试。
+
+    failure_count 不在这里递增——只有 LLM 真正失败时由摘要阶段在 retry 路径下
+    +1，符合“失败一次才加一次”的语义。这里只负责放弃已经用完预算的候选，让
+    投递阶段以纯 PDF 模式接管。
+    """
+    remaining: list[WorkflowCandidate] = []
+    for candidate in candidates:
+        if candidate.summary_failure_count >= max_failures:
+            repo.mark_summary_skipped(
+                source=candidate.source,
+                announcement_id=candidate.announcement_id,
+            )
+            conn.commit()
+            progress(
+                log_event(
+                    "summary",
+                    "skipped",
+                    level="WARNING",
+                    failure_count=candidate.summary_failure_count,
+                    max_failures=max_failures,
+                    **candidate_log_fields(candidate),
+                )
+            )
+            continue
+        remaining.append(candidate)
+    return remaining
