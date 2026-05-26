@@ -1,6 +1,6 @@
 [project]
 name = "niuniu-stock-announcer"
-version = "0.1.1"
+version = "0.1.2"
 description = "NiuNiu Stock Announcer, a local stock announcement monitoring workflow."
 readme = "README.md"
 requires-python = ">=3.14"
