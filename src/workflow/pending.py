@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from config.runtime import load_runtime_config
+from config.watchlist import load_watchlist_config
 from db.connection import connect_database
 from db.repository import AnnouncementRepository
 from db.schema import ensure_schema
-from domain.config_models import RuntimeConfig
+from domain.config_models import RuntimeConfig, WatchlistConfig
 from domain.workflow_models import (
     AnnouncementRef,
     PipelineStageSummary,
@@ -34,14 +35,17 @@ class _WorkflowResources:
     runtime_config: RuntimeConfig
     conn: Any
     repo: AnnouncementRepository
+    watchlist_config: WatchlistConfig | None = None
 
 
 @contextmanager
 def _open_workflow_resources(
     *,
     env_file: str | Path | None,
+    config_file: str | Path | None = None,
     require_llm: bool = False,
     require_telegram: bool = False,
+    load_watchlist: bool = False,
 ) -> Iterator[_WorkflowResources]:
     runtime_config = load_runtime_config(
         env_file=env_file,
@@ -49,12 +53,18 @@ def _open_workflow_resources(
         require_llm=require_llm,
         require_telegram=require_telegram,
     )
+    watchlist_config = None
+    if load_watchlist:
+        watchlist_config = load_watchlist_config(
+            config_file or runtime_config.watchlist_file
+        )
     with connect_database(require_database_url(runtime_config)) as conn:
         ensure_schema(conn)
         yield _WorkflowResources(
             runtime_config=runtime_config,
             conn=conn,
             repo=AnnouncementRepository(conn),
+            watchlist_config=watchlist_config,
         )
 
 
@@ -62,6 +72,7 @@ def run_new_workflow(
     *,
     refs: Sequence[AnnouncementRef],
     env_file: str | Path | None = None,
+    config_file: str | Path | None = None,
     limit: int | None = None,
     progress: ProgressReporter | None = None,
 ) -> tuple[PipelineStageSummary, PipelineStageSummary]:
@@ -73,8 +84,10 @@ def run_new_workflow(
     deduped_refs = dedupe_refs(refs)
     with _open_workflow_resources(
         env_file=env_file,
+        config_file=config_file,
         require_llm=True,
         require_telegram=True,
+        load_watchlist=True,
     ) as resources:
         summary_candidates = resources.repo.list_summary_candidates(
             refs=deduped_refs,
@@ -98,6 +111,7 @@ def run_new_workflow(
             conn=resources.conn,
             candidates=delivery_candidates,
             runtime_config=resources.runtime_config,
+            watchlist_config=_require_watchlist_config(resources),
             progress=report,
         )
     return summary_result, delivery_result
@@ -106,6 +120,7 @@ def run_new_workflow(
 def process_pending(
     *,
     env_file: str | Path | None = None,
+    config_file: str | Path | None = None,
     limit: int | None = None,
     progress: ProgressReporter | None = None,
 ) -> tuple[PipelineStageSummary, PipelineStageSummary]:
@@ -116,8 +131,10 @@ def process_pending(
     report = progress
     with _open_workflow_resources(
         env_file=env_file,
+        config_file=config_file,
         require_llm=True,
         require_telegram=True,
+        load_watchlist=True,
     ) as resources:
         summary_candidates = resources.repo.list_summary_candidates(
             statuses=("pending",),
@@ -139,6 +156,7 @@ def process_pending(
             conn=resources.conn,
             candidates=delivery_candidates,
             runtime_config=resources.runtime_config,
+            watchlist_config=_require_watchlist_config(resources),
             progress=report,
         )
     return summary_result, delivery_result
@@ -162,7 +180,7 @@ def retry_failed_summaries(
             statuses=("failed",),
             limit=limit,
         )
-        candidates = _bump_and_skip_exhausted(
+        candidates, _ = _bump_and_skip_exhausted(
             resources.repo,
             conn=resources.conn,
             candidates=candidates,
@@ -182,6 +200,7 @@ def retry_failed_summaries(
 def retry_failed_deliveries(
     *,
     env_file: str | Path | None = None,
+    config_file: str | Path | None = None,
     limit: int | None = None,
     progress: ProgressReporter | None = None,
 ) -> PipelineStageSummary:
@@ -191,7 +210,9 @@ def retry_failed_deliveries(
     """
     with _open_workflow_resources(
         env_file=env_file,
+        config_file=config_file,
         require_telegram=True,
+        load_watchlist=True,
     ) as resources:
         candidates = resources.repo.list_delivery_candidates(
             statuses=("failed",),
@@ -202,6 +223,7 @@ def retry_failed_deliveries(
             conn=resources.conn,
             candidates=candidates,
             runtime_config=resources.runtime_config,
+            watchlist_config=_require_watchlist_config(resources),
             progress=progress,
         )
 
@@ -209,6 +231,7 @@ def retry_failed_deliveries(
 def retry_failed_all(
     *,
     env_file: str | Path | None = None,
+    config_file: str | Path | None = None,
     limit: int | None = None,
     progress: ProgressReporter | None = None,
 ) -> tuple[PipelineStageSummary, PipelineStageSummary]:
@@ -218,14 +241,16 @@ def retry_failed_all(
     """
     with _open_workflow_resources(
         env_file=env_file,
+        config_file=config_file,
         require_llm=True,
         require_telegram=True,
+        load_watchlist=True,
     ) as resources:
         summary_candidates = resources.repo.list_summary_candidates(
             statuses=("failed",),
             limit=limit,
         )
-        summary_candidates = _bump_and_skip_exhausted(
+        summary_candidates, skipped_refs = _bump_and_skip_exhausted(
             resources.repo,
             conn=resources.conn,
             candidates=summary_candidates,
@@ -240,14 +265,28 @@ def retry_failed_all(
             progress=progress,
             increment_failure_count_on_failure=True,
         )
-        successful_refs = [candidate.ref for candidate in summary_candidates]
+        retried_refs = [candidate.ref for candidate in summary_candidates]
+        post_retry_failed_candidates = resources.repo.list_summary_candidates(
+            refs=retried_refs,
+            statuses=("failed",),
+        )
+        _, post_retry_skipped_refs = _bump_and_skip_exhausted(
+            resources.repo,
+            conn=resources.conn,
+            candidates=post_retry_failed_candidates,
+            max_failures=resources.runtime_config.summary_max_failures,
+            progress=progress or noop_progress,
+        )
+        delivery_refs = dedupe_refs(
+            retried_refs + skipped_refs + post_retry_skipped_refs
+        )
         delivery_candidates = resources.repo.list_delivery_candidates(
             statuses=("failed",),
             limit=limit,
         )
         delivery_candidates.extend(
             resources.repo.list_delivery_candidates(
-                refs=successful_refs,
+                refs=delivery_refs,
                 statuses=("pending", "failed"),
             )
         )
@@ -257,9 +296,16 @@ def retry_failed_all(
             conn=resources.conn,
             candidates=delivery_candidates,
             runtime_config=resources.runtime_config,
+            watchlist_config=_require_watchlist_config(resources),
             progress=progress,
         )
     return summary_result, delivery_result
+
+
+def _require_watchlist_config(resources: _WorkflowResources) -> WatchlistConfig:
+    if resources.watchlist_config is None:
+        raise RuntimeError("watchlist config is required for delivery workflow")
+    return resources.watchlist_config
 
 
 def _bump_and_skip_exhausted(
@@ -269,14 +315,15 @@ def _bump_and_skip_exhausted(
     candidates: Sequence[WorkflowCandidate],
     max_failures: int,
     progress: ProgressReporter,
-) -> list[WorkflowCandidate]:
+) -> tuple[list[WorkflowCandidate], list[AnnouncementRef]]:
     """retry 入口的预处理：把已达阈值的候选转为 skipped，剩余的进入正常重试。
 
     failure_count 不在这里递增——只有 LLM 真正失败时由摘要阶段在 retry 路径下
-    +1，符合“失败一次才加一次”的语义。这里只负责放弃已经用完预算的候选，让
-    投递阶段以纯 PDF 模式接管。
+    +1，符合“失败一次才加一次”的语义。这里返回 skipped 引用，让 all 入口能在
+    同一轮投递纯 PDF 兜底。
     """
     remaining: list[WorkflowCandidate] = []
+    skipped_refs: list[AnnouncementRef] = []
     for candidate in candidates:
         if candidate.summary_failure_count >= max_failures:
             repo.mark_summary_skipped(
@@ -284,6 +331,7 @@ def _bump_and_skip_exhausted(
                 announcement_id=candidate.announcement_id,
             )
             conn.commit()
+            skipped_refs.append(candidate.ref)
             progress(
                 log_event(
                     "summary",
@@ -296,4 +344,4 @@ def _bump_and_skip_exhausted(
             )
             continue
         remaining.append(candidate)
-    return remaining
+    return remaining, skipped_refs

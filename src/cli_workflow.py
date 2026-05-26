@@ -153,6 +153,7 @@ def run(
         summary_result, delivery_result = run_new_workflow(
             refs=sync_summary.new_refs,
             env_file=env_file,
+            config_file=config_file,
             limit=limit,
             progress=context.report,
         )
@@ -167,6 +168,7 @@ def run(
 
 def process_pending_command(
     env_file: Path | None = typer.Option(None, help="Specify .env file"),
+    config_file: Path | None = typer.Option(None, help="Specify watchlist YAML"),
     limit: int | None = typer.Option(None, help="Limit pending rows"),
     log_level: str = typer.Option("INFO", help="Console and file log level"),
     log_dir: Path = typer.Option(Path("logs/runs"), help="Per-run log directory"),
@@ -177,6 +179,7 @@ def process_pending_command(
     context = setup_command_logging(
         command="process-pending",
         env_file=env_file,
+        config_file=config_file,
         limit=limit,
         log_level=log_level,
         log_dir=log_dir,
@@ -185,6 +188,7 @@ def process_pending_command(
     try:
         summary_result, delivery_result = process_pending(
             env_file=env_file,
+            config_file=config_file,
             limit=limit,
             progress=context.report,
         )

@@ -80,11 +80,29 @@ class AnnouncementSourceConfig(BaseModel):
         return getattr(self, market)
 
 
+class TelegramDeliverySendPdfConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    a_share: bool = True
+    hk: bool = True
+
+
+class WatchlistTelegramDeliveryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    send_pdf: TelegramDeliverySendPdfConfig = Field(
+        default_factory=TelegramDeliverySendPdfConfig
+    )
+
+
 class WatchlistConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     window_days: int | None = None
     sources: AnnouncementSourceConfig = Field(default_factory=AnnouncementSourceConfig)
+    telegram_delivery: WatchlistTelegramDeliveryConfig = Field(
+        default_factory=WatchlistTelegramDeliveryConfig
+    )
     filters: FilterConfig = Field(default_factory=FilterConfig)
     stocks: list[StockConfig] = Field(default_factory=list)
 

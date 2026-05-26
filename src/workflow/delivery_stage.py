@@ -10,10 +10,11 @@ from delivery.telegram.sender import (
     send_telegram_delivery,
 )
 from domain.common import WorkflowStatus
-from domain.config_models import RuntimeConfig
+from domain.config_models import RuntimeConfig, WatchlistConfig
 from domain.telegram_models import (
     TelegramSendResult,
     TelegramSummaryPayload,
+    TelegramTargetKey,
 )
 from domain.workflow_models import (
     PipelineStageSummary,
@@ -35,6 +36,7 @@ def run_delivery_candidates(
     conn,
     candidates: Sequence[WorkflowCandidate],
     runtime_config: RuntimeConfig,
+    watchlist_config: WatchlistConfig,
     progress: ProgressReporter | None = None,
 ) -> PipelineStageSummary:
     """依次处理 Telegram 投递候选，并汇总 completed/failed/unknown。
@@ -50,6 +52,7 @@ def run_delivery_candidates(
             conn=conn,
             candidate=candidate,
             runtime_config=runtime_config,
+            watchlist_config=watchlist_config,
             progress=report,
             index=index,
             total=len(candidates),
@@ -78,6 +81,7 @@ def _run_delivery_candidate(
     conn,
     candidate: WorkflowCandidate,
     runtime_config: RuntimeConfig,
+    watchlist_config: WatchlistConfig,
     progress: ProgressReporter,
     index: int,
     total: int,
@@ -145,7 +149,7 @@ def _run_delivery_candidate(
             payload,
             pdf_path=pdf_path,
             send_text=candidate.text_message_id is None,
-            send_pdf=candidate.pdf_message_id is None,
+            send_pdf=_should_send_pdf(candidate, watchlist_config),
             config=runtime_config,
             on_text_sent=save_text_result,
             on_pdf_sent=save_pdf_result,
@@ -205,6 +209,18 @@ def _run_delivery_candidate(
             )
         )
         return "failed"
+
+
+def _should_send_pdf(candidate: WorkflowCandidate, config: WatchlistConfig) -> bool:
+    if candidate.pdf_message_id is not None:
+        return False
+    if candidate.summary_status == "skipped":
+        return True
+    if candidate.target_key == TelegramTargetKey.HK or (
+        candidate.target_key is None and candidate.market == "hk"
+    ):
+        return config.telegram_delivery.send_pdf.hk
+    return config.telegram_delivery.send_pdf.a_share
 
 
 def _build_telegram_payload(candidate: WorkflowCandidate) -> TelegramSummaryPayload:

@@ -52,6 +52,7 @@ def retry_failed_summary_command(
 @retry_failed_app.command("delivery")
 def retry_failed_delivery_command(
     env_file: Path | None = typer.Option(None, help="Specify .env file"),
+    config_file: Path | None = typer.Option(None, help="Specify watchlist YAML"),
     limit: int | None = typer.Option(None, help="Limit retry count"),
     log_level: str = typer.Option("INFO", help="Console and file log level"),
     log_dir: Path = typer.Option(Path("logs/runs"), help="Per-run log directory"),
@@ -62,6 +63,7 @@ def retry_failed_delivery_command(
     context = setup_command_logging(
         command="retry-failed-delivery",
         env_file=env_file,
+        config_file=config_file,
         limit=limit,
         log_level=log_level,
         log_dir=log_dir,
@@ -70,6 +72,7 @@ def retry_failed_delivery_command(
     try:
         result = retry_failed_deliveries(
             env_file=env_file,
+            config_file=config_file,
             limit=limit,
             progress=context.report,
         )
@@ -85,6 +88,7 @@ def retry_failed_delivery_command(
 @retry_failed_app.command("all")
 def retry_failed_all_command(
     env_file: Path | None = typer.Option(None, help="Specify .env file"),
+    config_file: Path | None = typer.Option(None, help="Specify watchlist YAML"),
     limit: int | None = typer.Option(None, help="Limit retry count"),
     log_level: str = typer.Option("INFO", help="Console and file log level"),
     log_dir: Path = typer.Option(Path("logs/runs"), help="Per-run log directory"),
@@ -95,6 +99,7 @@ def retry_failed_all_command(
     context = setup_command_logging(
         command="retry-failed-all",
         env_file=env_file,
+        config_file=config_file,
         limit=limit,
         log_level=log_level,
         log_dir=log_dir,
@@ -103,6 +108,7 @@ def retry_failed_all_command(
     try:
         summary_result, delivery_result = retry_failed_all(
             env_file=env_file,
+            config_file=config_file,
             limit=limit,
             progress=context.report,
         )
