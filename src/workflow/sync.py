@@ -100,7 +100,11 @@ def sync_once(
                             start_date=window_start,
                             end_date=window_end,
                         )
-                        _persist_query_result(repo, task, result, summary, report)
+                        task_summary = SyncSummary()
+                        _persist_query_result(repo, task, result, task_summary, report)
+                        # 只有数据库提交成功后，才把本任务统计并入总结果。
+                        conn.commit()
+                        _merge_sync_summary(summary, task_summary)
                         report(
                             log_event(
                                 "sync",
@@ -114,8 +118,6 @@ def sync_once(
                                 selected=len(result.items),
                             )
                         )
-                        # 每个查询任务独立提交，单个股票或关键词失败不会回滚其他任务。
-                        conn.commit()
                     except Exception as exc:
                         conn.rollback()
                         error_text = short_error(exc)
@@ -143,6 +145,20 @@ def sync_once(
             )
         )
     return summary
+
+
+def _merge_sync_summary(summary: SyncSummary, task_summary: SyncSummary) -> None:
+    """提交成功后合并单个查询任务的统计，避免 rollback 后内存状态失真。"""
+    summary.fetched_count += task_summary.fetched_count
+    summary.skipped_count += task_summary.skipped_count
+    summary.inserted_announcements += task_summary.inserted_announcements
+    summary.updated_announcements += task_summary.updated_announcements
+    summary.inserted_hits += task_summary.inserted_hits
+    summary.updated_hits += task_summary.updated_hits
+    summary.filtered_hits += task_summary.filtered_hits
+    summary.seeded_summaries += task_summary.seeded_summaries
+    summary.new_refs.extend(task_summary.new_refs)
+    summary.errors.extend(task_summary.errors)
 
 
 def _wait_before_same_source_query(
