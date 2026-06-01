@@ -177,6 +177,8 @@ class RuntimeConfig(BaseModel):
     llm_timeout: float = 30
     llm_max_retries: int = 2
     summary_max_failures: int = 3
+    summary_running_timeout_minutes: int = 120
+    delivery_running_timeout_minutes: int = 30
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     telegram_run_log: TelegramRunLogSettings = Field(
         default_factory=TelegramRunLogSettings
@@ -278,4 +280,14 @@ class RuntimeConfig(BaseModel):
     def _validate_summary_max_failures(cls, value: int) -> int:
         if value < 1:
             raise ValueError("WATCHLIST_SUMMARY_MAX_FAILURES must be greater than 0")
+        return value
+
+    @field_validator(
+        "summary_running_timeout_minutes",
+        "delivery_running_timeout_minutes",
+    )
+    @classmethod
+    def _validate_running_timeout_minutes(cls, value: int, info) -> int:
+        if value < 1:
+            raise ValueError(f"{info.field_name} must be greater than 0")
         return value

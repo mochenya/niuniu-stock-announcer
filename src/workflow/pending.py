@@ -89,11 +89,13 @@ def run_new_workflow(
         require_telegram=True,
         load_watchlist=True,
     ) as resources:
-        summary_candidates = resources.repo.list_summary_candidates(
+        _recover_stale_running(resources, progress=report)
+        summary_candidates = resources.repo.claim_summary_candidates(
             refs=deduped_refs,
             statuses=("pending",),
             limit=limit,
         )
+        resources.conn.commit()
         summary_result = run_summary_candidates(
             resources.repo,
             conn=resources.conn,
@@ -101,11 +103,12 @@ def run_new_workflow(
             runtime_config=resources.runtime_config,
             progress=report,
         )
-        delivery_candidates = resources.repo.list_delivery_candidates(
+        delivery_candidates = resources.repo.claim_delivery_candidates(
             refs=deduped_refs,
             statuses=("pending",),
             limit=limit,
         )
+        resources.conn.commit()
         delivery_result = run_delivery_candidates(
             resources.repo,
             conn=resources.conn,
@@ -136,10 +139,12 @@ def process_pending(
         require_telegram=True,
         load_watchlist=True,
     ) as resources:
-        summary_candidates = resources.repo.list_summary_candidates(
+        _recover_stale_running(resources, progress=report)
+        summary_candidates = resources.repo.claim_summary_candidates(
             statuses=("pending",),
             limit=limit,
         )
+        resources.conn.commit()
         summary_result = run_summary_candidates(
             resources.repo,
             conn=resources.conn,
@@ -147,10 +152,11 @@ def process_pending(
             runtime_config=resources.runtime_config,
             progress=report,
         )
-        delivery_candidates = resources.repo.list_delivery_candidates(
+        delivery_candidates = resources.repo.claim_delivery_candidates(
             statuses=("pending",),
             limit=limit,
         )
+        resources.conn.commit()
         delivery_result = run_delivery_candidates(
             resources.repo,
             conn=resources.conn,
@@ -176,6 +182,11 @@ def retry_failed_summaries(
         env_file=env_file,
         require_llm=True,
     ) as resources:
+        _recover_stale_running(
+            resources,
+            progress=progress,
+            include_delivery=False,
+        )
         candidates = resources.repo.list_summary_candidates(
             statuses=("failed",),
             limit=limit,
@@ -187,6 +198,11 @@ def retry_failed_summaries(
             max_failures=resources.runtime_config.summary_max_failures,
             progress=progress or noop_progress,
         )
+        candidates = resources.repo.claim_summary_candidates(
+            refs=[candidate.ref for candidate in candidates],
+            statuses=("failed",),
+        )
+        resources.conn.commit()
         return run_summary_candidates(
             resources.repo,
             conn=resources.conn,
@@ -214,10 +230,16 @@ def retry_failed_deliveries(
         require_telegram=True,
         load_watchlist=True,
     ) as resources:
-        candidates = resources.repo.list_delivery_candidates(
+        _recover_stale_running(
+            resources,
+            progress=progress,
+            include_summary=False,
+        )
+        candidates = resources.repo.claim_delivery_candidates(
             statuses=("failed",),
             limit=limit,
         )
+        resources.conn.commit()
         return run_delivery_candidates(
             resources.repo,
             conn=resources.conn,
@@ -246,6 +268,7 @@ def retry_failed_all(
         require_telegram=True,
         load_watchlist=True,
     ) as resources:
+        _recover_stale_running(resources, progress=progress)
         summary_candidates = resources.repo.list_summary_candidates(
             statuses=("failed",),
             limit=limit,
@@ -257,6 +280,11 @@ def retry_failed_all(
             max_failures=resources.runtime_config.summary_max_failures,
             progress=progress or noop_progress,
         )
+        summary_candidates = resources.repo.claim_summary_candidates(
+            refs=[candidate.ref for candidate in summary_candidates],
+            statuses=("failed",),
+        )
+        resources.conn.commit()
         summary_result = run_summary_candidates(
             resources.repo,
             conn=resources.conn,
@@ -280,16 +308,18 @@ def retry_failed_all(
         delivery_refs = dedupe_refs(
             retried_refs + skipped_refs + post_retry_skipped_refs
         )
-        delivery_candidates = resources.repo.list_delivery_candidates(
+        delivery_candidates = resources.repo.claim_delivery_candidates(
             statuses=("failed",),
             limit=limit,
         )
+        resources.conn.commit()
         delivery_candidates.extend(
-            resources.repo.list_delivery_candidates(
+            resources.repo.claim_delivery_candidates(
                 refs=delivery_refs,
                 statuses=("pending", "failed"),
             )
         )
+        resources.conn.commit()
         delivery_candidates = dedupe_candidates(delivery_candidates)
         delivery_result = run_delivery_candidates(
             resources.repo,
@@ -306,6 +336,38 @@ def _require_watchlist_config(resources: _WorkflowResources) -> WatchlistConfig:
     if resources.watchlist_config is None:
         raise RuntimeError("watchlist config is required for delivery workflow")
     return resources.watchlist_config
+
+
+def _recover_stale_running(
+    resources: _WorkflowResources,
+    *,
+    progress: ProgressReporter | None,
+    include_summary: bool = True,
+    include_delivery: bool = True,
+) -> None:
+    """处理异常退出遗留的 running 记录，避免它们永久不再被领取。"""
+    report = progress or noop_progress
+    summary_count = 0
+    delivery_count = 0
+    if include_summary:
+        summary_count = resources.repo.reset_stale_running_summaries(
+            timeout_minutes=resources.runtime_config.summary_running_timeout_minutes
+        )
+    if include_delivery:
+        delivery_count = resources.repo.reset_stale_running_deliveries(
+            timeout_minutes=resources.runtime_config.delivery_running_timeout_minutes
+        )
+    if summary_count or delivery_count:
+        resources.conn.commit()
+        report(
+            log_event(
+                "workflow",
+                "recovered_running",
+                level="WARNING",
+                summaries=summary_count,
+                deliveries=delivery_count,
+            )
+        )
 
 
 def _bump_and_skip_exhausted(
@@ -326,6 +388,19 @@ def _bump_and_skip_exhausted(
     skipped_refs: list[AnnouncementRef] = []
     for candidate in candidates:
         if candidate.summary_failure_count >= max_failures:
+            if candidate.pdf_local_path is None:
+                progress(
+                    log_event(
+                        "summary",
+                        "skip_blocked",
+                        level="WARNING",
+                        reason="pdf_missing",
+                        failure_count=candidate.summary_failure_count,
+                        max_failures=max_failures,
+                        **candidate_log_fields(candidate),
+                    )
+                )
+                continue
             repo.mark_summary_skipped(
                 source=candidate.source,
                 announcement_id=candidate.announcement_id,

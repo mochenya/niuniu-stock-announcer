@@ -59,6 +59,94 @@ class TelegramDeliveryRepository(RepositoryBase):
             build_workflow_candidate(row) for row in fetchall(self._conn, query, params)
         ]
 
+    def claim_delivery_candidates(
+        self,
+        *,
+        refs: Sequence[AnnouncementRef] | None = None,
+        statuses: Sequence[WorkflowStatus] = ("pending",),
+        limit: int | None = None,
+    ) -> list[WorkflowCandidate]:
+        """原子领取投递候选，并立即标记为 running。
+
+        Telegram 发送是有外部副作用的操作，必须在数据库层用行锁领取，避免多个
+        workflow 进程并发时重复发送同一条公告。
+        """
+        where = [
+            "s.pdf_local_path IS NOT NULL",
+            "("
+            "(s.status = 'completed'"
+            " AND s.summary_text IS NOT NULL"
+            " AND jsonb_array_length(COALESCE(s.summary_tags, '[]'::jsonb))"
+            " BETWEEN 3 AND 6)"
+            " OR s.status = 'skipped'"
+            ")",
+            "d.status = ANY(%s)",
+        ]
+        params: list[Any] = [list(statuses)]
+        if refs is not None:
+            ref_clause, ref_params = build_ref_clause("d", refs)
+            where.append(ref_clause)
+            params.extend(ref_params)
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = " LIMIT %s"
+            params.append(max(limit, 0))
+        query = f"""
+        WITH picked AS (
+            SELECT d.id
+            FROM telegram_deliveries AS d
+            JOIN announcement_summaries AS s
+              ON s.announcement_source = d.announcement_source
+             AND s.announcement_id = d.announcement_id
+            JOIN announcements AS a
+              ON a.source = d.announcement_source
+             AND a.announcement_id = d.announcement_id
+            WHERE {" AND ".join(where)}
+            ORDER BY a.announcement_time_ms ASC NULLS FIRST, a.announcement_id ASC
+            {limit_clause}
+            FOR UPDATE OF d SKIP LOCKED
+        ),
+        claimed AS (
+            UPDATE telegram_deliveries AS d
+            SET status = 'running',
+                failure_reason = NULL,
+                failure_log = NULL,
+                started_at = now(),
+                updated_at = now()
+            FROM picked
+            WHERE d.id = picked.id
+            RETURNING d.id
+        )
+        {DELIVERY_CANDIDATE_SQL}
+        JOIN claimed AS c
+          ON c.id = d.id
+        ORDER BY a.announcement_time_ms ASC NULLS FIRST, a.announcement_id ASC
+        """
+        return [
+            build_workflow_candidate(row) for row in fetchall(self._conn, query, params)
+        ]
+
+    def reset_stale_running_deliveries(self, *, timeout_minutes: int) -> int:
+        """把长时间停留 running 的投递记录转为 unknown，避免自动重发。"""
+        cursor = self._conn.execute(
+            """
+            UPDATE telegram_deliveries
+            SET status = 'unknown',
+                failure_reason = %s,
+                failure_log = NULL,
+                updated_at = now()
+            WHERE status = 'running'
+              AND started_at IS NOT NULL
+              AND started_at < now() - (%s * interval '1 minute')
+            """,
+            (
+                "stale running delivery outcome is unknown after "
+                f"{timeout_minutes} minutes",
+                timeout_minutes,
+            ),
+        )
+        return cursor.rowcount
+
     def mark_delivery_running(self, *, delivery_id: int) -> None:
         """把投递记录标记为 running，并清掉上一轮失败信息。"""
         self._conn.execute(

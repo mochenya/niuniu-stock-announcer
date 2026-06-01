@@ -57,6 +57,82 @@ class SummaryRepository(RepositoryBase):
             build_workflow_candidate(row) for row in fetchall(self._conn, query, params)
         ]
 
+    def claim_summary_candidates(
+        self,
+        *,
+        refs: Sequence[AnnouncementRef] | None = None,
+        statuses: Sequence[WorkflowStatus] = ("pending",),
+        limit: int | None = None,
+    ) -> list[WorkflowCandidate]:
+        """原子领取摘要候选，并立即标记为 running。
+
+        SELECT 和 UPDATE 放在同一个 SQL 里，配合 SKIP LOCKED 避免多个 workflow
+        进程同时领取同一条公告后重复下载 PDF 或调用 LLM。
+        """
+        where = ["s.status = ANY(%s)"]
+        params: list[Any] = [list(statuses)]
+        if refs is not None:
+            ref_clause, ref_params = build_ref_clause("s", refs)
+            where.append(ref_clause)
+            params.extend(ref_params)
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = " LIMIT %s"
+            params.append(max(limit, 0))
+        query = f"""
+        WITH picked AS (
+            SELECT s.announcement_source, s.announcement_id
+            FROM announcement_summaries AS s
+            JOIN announcements AS a
+              ON a.source = s.announcement_source
+             AND a.announcement_id = s.announcement_id
+            WHERE {" AND ".join(where)}
+            ORDER BY a.announcement_time_ms DESC NULLS LAST, a.announcement_id ASC
+            {limit_clause}
+            FOR UPDATE OF s SKIP LOCKED
+        ),
+        claimed AS (
+            UPDATE announcement_summaries AS s
+            SET status = 'running',
+                failure_reason = NULL,
+                failure_log = NULL,
+                summary_started_at = now(),
+                updated_at = now()
+            FROM picked
+            WHERE s.announcement_source = picked.announcement_source
+              AND s.announcement_id = picked.announcement_id
+            RETURNING s.announcement_source, s.announcement_id
+        )
+        {SUMMARY_CANDIDATE_SQL}
+        JOIN claimed AS c
+          ON c.announcement_source = s.announcement_source
+         AND c.announcement_id = s.announcement_id
+        ORDER BY a.announcement_time_ms DESC NULLS LAST, a.announcement_id ASC
+        """
+        return [
+            build_workflow_candidate(row) for row in fetchall(self._conn, query, params)
+        ]
+
+    def reset_stale_running_summaries(self, *, timeout_minutes: int) -> int:
+        """把长时间停留 running 的摘要记录转为 failed，供后续 retry 接管。"""
+        cursor = self._conn.execute(
+            """
+            UPDATE announcement_summaries
+            SET status = 'failed',
+                failure_reason = %s,
+                failure_log = NULL,
+                updated_at = now()
+            WHERE status = 'running'
+              AND summary_started_at IS NOT NULL
+              AND summary_started_at < now() - (%s * interval '1 minute')
+            """,
+            (
+                f"stale running summary recovered after {timeout_minutes} minutes",
+                timeout_minutes,
+            ),
+        )
+        return cursor.rowcount
+
     def mark_summary_running(
         self,
         *,
@@ -176,6 +252,7 @@ class SummaryRepository(RepositoryBase):
             WHERE announcement_source = %s
               AND announcement_id = %s
               AND status = 'failed'
+              AND pdf_local_path IS NOT NULL
             """,
             (normalize_announcement_source(source), announcement_id),
         )
