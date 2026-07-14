@@ -19,7 +19,7 @@ from db.query_helpers import (
 from db.row_mappers import build_workflow_candidate
 from domain.common import (
     AnnouncementSource,
-    WorkflowStatus,
+    SummaryStatus,
 )
 from domain.summary_models import SummaryRunResult
 from domain.workflow_models import (
@@ -35,7 +35,7 @@ class SummaryRepository(RepositoryBase):
         self,
         *,
         refs: Sequence[AnnouncementRef] | None = None,
-        statuses: Sequence[WorkflowStatus] = ("pending",),
+        statuses: Sequence[SummaryStatus] = ("pending",),
         limit: int | None = None,
     ) -> list[WorkflowCandidate]:
         """列出满足指定状态的摘要候选公告。
@@ -61,7 +61,7 @@ class SummaryRepository(RepositoryBase):
         self,
         *,
         refs: Sequence[AnnouncementRef] | None = None,
-        statuses: Sequence[WorkflowStatus] = ("pending",),
+        statuses: Sequence[SummaryStatus] = ("pending",),
         limit: int | None = None,
     ) -> list[WorkflowCandidate]:
         """原子领取摘要候选，并立即标记为 running。

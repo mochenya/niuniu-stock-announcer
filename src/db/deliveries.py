@@ -11,7 +11,7 @@ from db.query_helpers import (
     fetchall,
 )
 from db.row_mappers import build_workflow_candidate
-from domain.common import WorkflowStatus
+from domain.common import DeliveryFailureStatus, DeliveryStatus
 from domain.workflow_models import (
     AnnouncementRef,
     WorkflowCandidate,
@@ -25,7 +25,7 @@ class TelegramDeliveryRepository(RepositoryBase):
         self,
         *,
         refs: Sequence[AnnouncementRef] | None = None,
-        statuses: Sequence[WorkflowStatus] = ("pending",),
+        statuses: Sequence[DeliveryStatus] = ("pending",),
         limit: int | None = None,
     ) -> list[WorkflowCandidate]:
         """只返回摘要可用、PDF 已下载的投递候选。
@@ -63,7 +63,7 @@ class TelegramDeliveryRepository(RepositoryBase):
         self,
         *,
         refs: Sequence[AnnouncementRef] | None = None,
-        statuses: Sequence[WorkflowStatus] = ("pending",),
+        statuses: Sequence[DeliveryStatus] = ("pending",),
         limit: int | None = None,
     ) -> list[WorkflowCandidate]:
         """原子领取投递候选，并立即标记为 running。
@@ -223,7 +223,7 @@ class TelegramDeliveryRepository(RepositoryBase):
         self,
         *,
         delivery_id: int,
-        status: WorkflowStatus,
+        status: DeliveryFailureStatus,
         failure_reason: str,
         failure_log: str,
     ) -> None:

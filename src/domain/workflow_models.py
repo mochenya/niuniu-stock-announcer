@@ -7,8 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from domain.common import (
     AnnouncementSource,
+    DeliveryStatus,
     Market,
-    WorkflowStatus,
+    SummaryStatus,
     build_announcement_key,
     normalize_required_text,
 )
@@ -62,14 +63,14 @@ class WorkflowCandidate(BaseModel):
     company_name: str
     primary_hit_id: int | None = None
     search_keyword: str | None = None
-    summary_status: WorkflowStatus | None = None
+    summary_status: SummaryStatus | None = None
     summary_failure_count: int = 0
     pdf_local_path: Path | None = None
     summary_json: dict[str, object] | None = None
     summary_text: str | None = None
     summary_tags: list[str] = Field(default_factory=list)
     delivery_id: int | None = None
-    delivery_status: WorkflowStatus | None = None
+    delivery_status: DeliveryStatus | None = None
     target_key: TelegramTargetKey | None = None
     target_chat_id: int | None = None
     target_message_thread_id: int | None = None

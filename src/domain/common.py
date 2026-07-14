@@ -6,9 +6,9 @@ from typing import Literal, get_args
 AnnouncementSource = Literal["cninfo", "sse", "szse"]
 Market = Literal["sh", "sz", "bj", "hk"]
 SearchMode = Literal["stock", "stock_keyword"]
-WorkflowStatus = Literal[
-    "pending", "running", "completed", "failed", "unknown", "skipped"
-]
+SummaryStatus = Literal["pending", "running", "completed", "failed", "skipped"]
+DeliveryStatus = Literal["pending", "running", "completed", "failed", "unknown"]
+DeliveryFailureStatus = Literal["failed", "unknown"]
 
 SUPPORTED_ANNOUNCEMENT_SOURCES = frozenset[str](get_args(AnnouncementSource))
 DEFAULT_ANNOUNCEMENT_SOURCE_BY_MARKET: dict[Market, AnnouncementSource] = {

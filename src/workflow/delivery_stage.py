@@ -9,7 +9,7 @@ from delivery.telegram.sender import (
     TelegramSendOutcomeUnknown,
     send_telegram_delivery,
 )
-from domain.common import WorkflowStatus
+from domain.common import DeliveryStatus
 from domain.config_models import RuntimeConfig, WatchlistConfig
 from domain.telegram_models import (
     TelegramSendResult,
@@ -28,6 +28,18 @@ from workflow.common import (
     noop_progress,
     short_error,
 )
+
+
+class _PostSendPersistenceError(RuntimeError):
+    """Telegram 已返回 message_id，但本地状态保存失败。"""
+
+    def __init__(self, *, action: str, result: TelegramSendResult, cause: Exception):
+        super().__init__(
+            f"Telegram {result.kind} message was sent but {action} failed "
+            f"for chat_id={result.chat_id}, "
+            f"message_thread_id={result.message_thread_id}, "
+            f"message_id={result.message_id}: {cause}"
+        )
 
 
 def run_delivery_candidates(
@@ -85,7 +97,7 @@ def _run_delivery_candidate(
     progress: ProgressReporter,
     index: int,
     total: int,
-) -> WorkflowStatus:
+) -> DeliveryStatus:
     """处理单条 Telegram 投递候选。
 
     文本和 PDF 发送结果会分步提交；若发送过程结果不可确认，记录为 unknown。
@@ -108,14 +120,22 @@ def _run_delivery_candidate(
         conn.commit()
 
         def save_text_result(result: TelegramSendResult) -> None:
-            # 文本和 PDF 分步提交，重试时可以跳过已经成功发送的部分。
-            repo.save_text_message(
-                delivery_id=delivery_id,
-                chat_id=result.chat_id,
-                message_thread_id=result.message_thread_id,
-                message_id=result.message_id,
-            )
-            conn.commit()
+            try:
+                # 文本和 PDF 分步提交，重试时可以跳过已经成功发送的部分。
+                repo.save_text_message(
+                    delivery_id=delivery_id,
+                    chat_id=result.chat_id,
+                    message_thread_id=result.message_thread_id,
+                    message_id=result.message_id,
+                )
+                conn.commit()
+            except Exception as exc:
+                # Telegram 已返回 message_id，本地落库失败时绝不能进入 failed 自动重发。
+                raise _PostSendPersistenceError(
+                    action="save text message_id",
+                    result=result,
+                    cause=exc,
+                ) from exc
             progress(
                 log_event(
                     "delivery",
@@ -127,14 +147,22 @@ def _run_delivery_candidate(
             )
 
         def save_pdf_result(result: TelegramSendResult) -> None:
-            # 文件发送成功后立即保存 message_id，降低重复投递概率。
-            repo.save_pdf_message(
-                delivery_id=delivery_id,
-                chat_id=result.chat_id,
-                message_thread_id=result.message_thread_id,
-                message_id=result.message_id,
-            )
-            conn.commit()
+            try:
+                # 文件发送成功后立即保存 message_id，降低重复投递概率。
+                repo.save_pdf_message(
+                    delivery_id=delivery_id,
+                    chat_id=result.chat_id,
+                    message_thread_id=result.message_thread_id,
+                    message_id=result.message_id,
+                )
+                conn.commit()
+            except Exception as exc:
+                # PDF 已投递但 message_id 未可靠持久化，只能标记 unknown 等人工确认。
+                raise _PostSendPersistenceError(
+                    action="save pdf message_id",
+                    result=result,
+                    cause=exc,
+                ) from exc
             progress(
                 log_event(
                     "delivery",
@@ -166,7 +194,7 @@ def _run_delivery_candidate(
             )
         )
         return "completed"
-    except TelegramSendOutcomeUnknown as exc:
+    except (TelegramSendOutcomeUnknown, _PostSendPersistenceError) as exc:
         conn.rollback()
         # 这里的 unknown 表示外部结果不可确认，不能简单当作 failed 自动重发。
         repo.save_delivery_failure(
