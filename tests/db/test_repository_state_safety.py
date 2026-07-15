@@ -9,7 +9,7 @@ from cninfo_announcement.models import BusinessAnnouncement
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from db.repository import AnnouncementRepository  # noqa: E402
-from domain.workflow_models import WorkflowCandidate  # noqa: E402
+from db.records import SummaryCandidateRecord  # noqa: E402
 from workflow.pending import _bump_and_skip_exhausted  # noqa: E402
 
 
@@ -127,7 +127,7 @@ def test_mark_summary_skipped_requires_downloaded_pdf() -> None:
 def test_exhausted_summary_without_pdf_stays_failed_instead_of_skipped() -> None:
     conn = _FakeConnection()
     repo = AnnouncementRepository(conn)
-    candidate = WorkflowCandidate(
+    candidate = SummaryCandidateRecord(
         source="cninfo",
         announcement_id="ann-1",
         announcement=BusinessAnnouncement(
@@ -140,7 +140,6 @@ def test_exhausted_summary_without_pdf_stays_failed_instead_of_skipped() -> None
         stock_code="600000",
         stock_key="sh:600000",
         company_name="test company",
-        summary_status="failed",
         summary_failure_count=3,
         pdf_local_path=None,
     )

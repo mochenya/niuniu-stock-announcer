@@ -11,7 +11,7 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 import domain.common as common  # noqa: E402
-from domain.workflow_models import WorkflowCandidate  # noqa: E402
+from db.records import DeliveryCandidateRecord  # noqa: E402
 
 
 def test_stage_status_literals_are_specific_to_their_workflow_stage() -> None:
@@ -33,12 +33,16 @@ def test_stage_status_literals_are_specific_to_their_workflow_stage() -> None:
 
 def test_summary_status_rejects_delivery_only_unknown() -> None:
     with pytest.raises(ValidationError):
-        WorkflowCandidate.model_validate(_candidate_payload(summary_status="unknown"))
+        DeliveryCandidateRecord.model_validate(
+            _candidate_payload(summary_status="unknown")
+        )
 
 
-def test_delivery_status_rejects_summary_only_skipped() -> None:
+def test_delivery_record_rejects_removed_delivery_status_field() -> None:
     with pytest.raises(ValidationError):
-        WorkflowCandidate.model_validate(_candidate_payload(delivery_status="skipped"))
+        DeliveryCandidateRecord.model_validate(
+            _candidate_payload(delivery_status="skipped")
+        )
 
 
 def _candidate_payload(**overrides: object) -> dict[str, object]:
@@ -57,6 +61,9 @@ def _candidate_payload(**overrides: object) -> dict[str, object]:
         "stock_code": "600000",
         "stock_key": "sh:600000",
         "company_name": "测试公司",
+        "pdf_local_path": "/tmp/ann-1.pdf",
+        "delivery_id": 1,
+        "target_key": "a_share",
     }
     payload.update(overrides)
     return payload

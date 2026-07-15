@@ -17,7 +17,7 @@ from domain.telegram_models import (  # noqa: E402
     TelegramDeliveryResult,
     TelegramSendResult,
 )
-from domain.workflow_models import WorkflowCandidate  # noqa: E402
+from db.records import DeliveryCandidateRecord  # noqa: E402
 
 
 class _FakeConnection:
@@ -125,14 +125,14 @@ class _RetryFailedRepository:
         *,
         statuses: tuple[str, ...],
         limit: int | None = None,
-    ) -> list[WorkflowCandidate]:
+    ) -> list[DeliveryCandidateRecord]:
         assert limit is None
         self.claim_statuses.append(tuple(statuses))
         return []
 
 
-def _build_candidate(*, sent_kind: str) -> WorkflowCandidate:
-    return WorkflowCandidate(
+def _build_candidate(*, sent_kind: str) -> DeliveryCandidateRecord:
+    return DeliveryCandidateRecord(
         source="cninfo",
         announcement_id="ann-1",
         announcement=BusinessAnnouncement(
@@ -152,7 +152,7 @@ def _build_candidate(*, sent_kind: str) -> WorkflowCandidate:
         summary_text="测试摘要",
         summary_tags=["标签一", "标签二", "标签三"],
         delivery_id=1,
-        delivery_status="running",
+        target_key="a_share",
         text_message_id=101 if sent_kind == "pdf" else None,
     )
 

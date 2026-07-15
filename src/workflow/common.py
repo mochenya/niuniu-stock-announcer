@@ -3,11 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from db.records import AnnouncementCandidateRecord, DeliveryCandidateRecord
 from domain.config_models import RuntimeConfig
-from domain.workflow_models import (
-    AnnouncementRef,
-    WorkflowCandidate,
-)
+from domain.workflow_models import AnnouncementRef
 from log.events import LogEvent
 
 # workflow 只依赖这个回调类型，不直接依赖 Loguru，便于 CLI 之外复用业务流程。
@@ -44,10 +42,10 @@ def dedupe_refs(refs: Sequence[AnnouncementRef]) -> list[AnnouncementRef]:
     return deduped
 
 
-def dedupe_candidates(
-    candidates: Sequence[WorkflowCandidate],
-) -> list[WorkflowCandidate]:
-    deduped: list[WorkflowCandidate] = []
+def dedupe_delivery_candidates(
+    candidates: Sequence[DeliveryCandidateRecord],
+) -> list[DeliveryCandidateRecord]:
+    deduped: list[DeliveryCandidateRecord] = []
     seen: set[str] = set()
     for candidate in candidates:
         key = f"{candidate.source}:{candidate.announcement_id}:{candidate.delivery_id}"
@@ -70,7 +68,7 @@ def format_progress(index: int, total: int) -> str:
     return f"{index:0{width}d}/{total:0{width}d}"
 
 
-def candidate_log_fields(candidate: WorkflowCandidate) -> dict[str, Any]:
+def candidate_log_fields(candidate: AnnouncementCandidateRecord) -> dict[str, Any]:
     """抽取摘要/投递阶段最关键的公告上下文字段，保证各阶段日志口径一致。"""
     return {
         "stock": candidate.stock_code,

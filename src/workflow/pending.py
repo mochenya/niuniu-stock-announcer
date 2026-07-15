@@ -9,6 +9,7 @@ from typing import Any
 from config.runtime import load_runtime_config
 from config.watchlist import load_watchlist_config
 from db.connection import connect_database
+from db.records import SummaryCandidateRecord
 from db.repository import AnnouncementRepository
 from db.schema import ensure_schema
 from domain.config_models import RuntimeConfig, WatchlistConfig
@@ -19,14 +20,13 @@ from domain.workflow_models import (
 from workflow.common import (
     ProgressReporter,
     candidate_log_fields,
-    dedupe_candidates,
+    dedupe_delivery_candidates,
     dedupe_refs,
     noop_progress,
     require_database_url,
 )
 from workflow.delivery_stage import run_delivery_candidates
 from workflow.summary_stage import run_summary_candidates
-from domain.workflow_models import WorkflowCandidate
 from log.events import log_event
 
 
@@ -320,7 +320,7 @@ def retry_failed_all(
             )
         )
         resources.conn.commit()
-        delivery_candidates = dedupe_candidates(delivery_candidates)
+        delivery_candidates = dedupe_delivery_candidates(delivery_candidates)
         delivery_result = run_delivery_candidates(
             resources.repo,
             conn=resources.conn,
@@ -374,17 +374,17 @@ def _bump_and_skip_exhausted(
     repo: AnnouncementRepository,
     *,
     conn,
-    candidates: Sequence[WorkflowCandidate],
+    candidates: Sequence[SummaryCandidateRecord],
     max_failures: int,
     progress: ProgressReporter,
-) -> tuple[list[WorkflowCandidate], list[AnnouncementRef]]:
+) -> tuple[list[SummaryCandidateRecord], list[AnnouncementRef]]:
     """retry 入口的预处理：把已达阈值的候选转为 skipped，剩余的进入正常重试。
 
     failure_count 不在这里递增——只有 LLM 真正失败时由摘要阶段在 retry 路径下
     +1，符合“失败一次才加一次”的语义。这里返回 skipped 引用，让 all 入口能在
     同一轮投递纯 PDF 兜底。
     """
-    remaining: list[WorkflowCandidate] = []
+    remaining: list[SummaryCandidateRecord] = []
     skipped_refs: list[AnnouncementRef] = []
     for candidate in candidates:
         if candidate.summary_failure_count >= max_failures:

@@ -10,11 +10,11 @@ from db.query_helpers import (
     build_ref_clause,
     fetchall,
 )
-from db.row_mappers import build_workflow_candidate
+from db.records import DeliveryCandidateRecord
+from db.row_mappers import build_delivery_candidate_record
 from domain.common import DeliveryFailureStatus, DeliveryStatus
 from domain.workflow_models import (
     AnnouncementRef,
-    WorkflowCandidate,
 )
 
 
@@ -27,7 +27,7 @@ class TelegramDeliveryRepository(RepositoryBase):
         refs: Sequence[AnnouncementRef] | None = None,
         statuses: Sequence[DeliveryStatus] = ("pending",),
         limit: int | None = None,
-    ) -> list[WorkflowCandidate]:
+    ) -> list[DeliveryCandidateRecord]:
         """只返回摘要可用、PDF 已下载的投递候选。
 
         摘要要么是 completed 且字段齐全，要么是 skipped——后者意味着 LLM 多次
@@ -56,7 +56,8 @@ class TelegramDeliveryRepository(RepositoryBase):
         )
         query, params = append_limit(query, params, limit)
         return [
-            build_workflow_candidate(row) for row in fetchall(self._conn, query, params)
+            build_delivery_candidate_record(row)
+            for row in fetchall(self._conn, query, params)
         ]
 
     def claim_delivery_candidates(
@@ -65,7 +66,7 @@ class TelegramDeliveryRepository(RepositoryBase):
         refs: Sequence[AnnouncementRef] | None = None,
         statuses: Sequence[DeliveryStatus] = ("pending",),
         limit: int | None = None,
-    ) -> list[WorkflowCandidate]:
+    ) -> list[DeliveryCandidateRecord]:
         """原子领取投递候选，并立即标记为 running。
 
         Telegram 发送是有外部副作用的操作，必须在数据库层用行锁领取，避免多个
@@ -123,7 +124,8 @@ class TelegramDeliveryRepository(RepositoryBase):
         ORDER BY a.announcement_time_ms ASC NULLS FIRST, a.announcement_id ASC
         """
         return [
-            build_workflow_candidate(row) for row in fetchall(self._conn, query, params)
+            build_delivery_candidate_record(row)
+            for row in fetchall(self._conn, query, params)
         ]
 
     def reset_stale_running_deliveries(self, *, timeout_minutes: int) -> int:

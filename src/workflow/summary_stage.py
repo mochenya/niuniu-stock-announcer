@@ -13,13 +13,11 @@ from announcements.download import (
 )
 from announcements.sources import create_announcement_client
 from db.repository import AnnouncementRepository
+from db.records import SummaryCandidateRecord
 from domain.config_models import RuntimeConfig
 from domain.common import AnnouncementSource
 from domain.summary_models import PdfSummaryRequest
-from domain.workflow_models import (
-    PipelineStageSummary,
-    WorkflowCandidate,
-)
+from domain.workflow_models import PipelineStageSummary
 from log.events import log_event
 from summary.client import SummaryLLMClient
 from summary.errors import serialize_summary_error
@@ -38,7 +36,7 @@ def run_summary_candidates(
     repo: AnnouncementRepository,
     *,
     conn,
-    candidates: Sequence[WorkflowCandidate],
+    candidates: Sequence[SummaryCandidateRecord],
     runtime_config: RuntimeConfig,
     progress: ProgressReporter | None = None,
     increment_failure_count_on_failure: bool = False,
@@ -89,7 +87,7 @@ def _run_summary_candidate(
     repo: AnnouncementRepository,
     *,
     conn,
-    candidate: WorkflowCandidate,
+    candidate: SummaryCandidateRecord,
     runtime_config: RuntimeConfig,
     llm_client: SummaryLLMClient,
     source_client_stack: ExitStack,

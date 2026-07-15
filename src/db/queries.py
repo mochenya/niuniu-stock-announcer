@@ -12,18 +12,13 @@ SELECT
     a.announcement_time_ms,
     a.adjunct_url,
     a.page_column,
-    s.primary_hit_id,
     s.market,
     s.stock_code,
     s.stock_key,
     s.company_name,
-    s.status AS summary_status,
-    s.summary_failure_count,
+    h.search_keyword,
     s.pdf_local_path,
-    s.summary_json,
-    s.summary_text,
-    COALESCE(s.summary_tags, '[]'::jsonb) AS summary_tags,
-    h.search_keyword
+    s.summary_failure_count
 FROM announcement_summaries AS s
 JOIN announcements AS a
   ON a.source = s.announcement_source
@@ -44,23 +39,17 @@ SELECT
     a.announcement_time_ms,
     a.adjunct_url,
     a.page_column,
-    s.primary_hit_id,
     s.market,
     s.stock_code,
     s.stock_key,
     s.company_name,
     s.status AS summary_status,
-    s.summary_failure_count,
+    h.search_keyword,
     s.pdf_local_path,
-    s.summary_json,
     s.summary_text,
     COALESCE(s.summary_tags, '[]'::jsonb) AS summary_tags,
-    h.search_keyword,
     d.id AS delivery_id,
-    d.status AS delivery_status,
     d.target_key,
-    d.target_chat_id,
-    d.target_message_thread_id,
     d.text_message_id,
     d.pdf_message_id
 FROM telegram_deliveries AS d

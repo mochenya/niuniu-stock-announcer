@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from db.repository import AnnouncementRepository
+from db.records import DeliveryCandidateRecord
 from delivery.telegram.sender import (
     TelegramSendOutcomeUnknown,
     send_telegram_delivery,
@@ -18,7 +19,6 @@ from domain.telegram_models import (
 )
 from domain.workflow_models import (
     PipelineStageSummary,
-    WorkflowCandidate,
 )
 from log.events import log_event
 from workflow.common import (
@@ -46,7 +46,7 @@ def run_delivery_candidates(
     repo: AnnouncementRepository,
     *,
     conn,
-    candidates: Sequence[WorkflowCandidate],
+    candidates: Sequence[DeliveryCandidateRecord],
     runtime_config: RuntimeConfig,
     watchlist_config: WatchlistConfig,
     progress: ProgressReporter | None = None,
@@ -91,7 +91,7 @@ def _run_delivery_candidate(
     repo: AnnouncementRepository,
     *,
     conn,
-    candidate: WorkflowCandidate,
+    candidate: DeliveryCandidateRecord,
     runtime_config: RuntimeConfig,
     watchlist_config: WatchlistConfig,
     progress: ProgressReporter,
@@ -239,19 +239,22 @@ def _run_delivery_candidate(
         return "failed"
 
 
-def _should_send_pdf(candidate: WorkflowCandidate, config: WatchlistConfig) -> bool:
+def _should_send_pdf(
+    candidate: DeliveryCandidateRecord,
+    config: WatchlistConfig,
+) -> bool:
     if candidate.pdf_message_id is not None:
         return False
     if candidate.summary_status == "skipped":
         return True
-    if candidate.target_key == TelegramTargetKey.HK or (
-        candidate.target_key is None and candidate.market == "hk"
-    ):
+    if candidate.target_key == TelegramTargetKey.HK:
         return config.telegram_delivery.send_pdf.hk
     return config.telegram_delivery.send_pdf.a_share
 
 
-def _build_telegram_payload(candidate: WorkflowCandidate) -> TelegramSummaryPayload:
+def _build_telegram_payload(
+    candidate: DeliveryCandidateRecord,
+) -> TelegramSummaryPayload:
     """把数据库候选转换为 Telegram 发送载荷。
 
     用 summary_status 作为单一真值源：skipped 一律 summary=None 走 PDF 降级，
@@ -277,14 +280,14 @@ def _build_telegram_payload(candidate: WorkflowCandidate) -> TelegramSummaryPayl
     )
 
 
-def _require_pdf_path(candidate: WorkflowCandidate) -> Path:
+def _require_pdf_path(candidate: DeliveryCandidateRecord) -> Path:
     """投递必须依赖摘要阶段保存的本地 PDF 路径。"""
     if candidate.pdf_local_path is None:
         raise ValueError(f"PDF path is unavailable: {candidate.announcement_id}")
     return candidate.pdf_local_path
 
 
-def _require_delivery_id(candidate: WorkflowCandidate) -> int:
+def _require_delivery_id(candidate: DeliveryCandidateRecord) -> int:
     """投递候选必须带有 telegram_deliveries 主键。"""
     if candidate.delivery_id is None:
         raise ValueError(f"delivery id is unavailable: {candidate.announcement_id}")

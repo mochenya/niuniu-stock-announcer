@@ -16,7 +16,8 @@ from db.query_helpers import (
     build_ref_clause,
     fetchall,
 )
-from db.row_mappers import build_workflow_candidate
+from db.records import SummaryCandidateRecord
+from db.row_mappers import build_summary_candidate_record
 from domain.common import (
     AnnouncementSource,
     SummaryStatus,
@@ -24,7 +25,6 @@ from domain.common import (
 from domain.summary_models import SummaryRunResult
 from domain.workflow_models import (
     AnnouncementRef,
-    WorkflowCandidate,
 )
 
 
@@ -37,7 +37,7 @@ class SummaryRepository(RepositoryBase):
         refs: Sequence[AnnouncementRef] | None = None,
         statuses: Sequence[SummaryStatus] = ("pending",),
         limit: int | None = None,
-    ) -> list[WorkflowCandidate]:
+    ) -> list[SummaryCandidateRecord]:
         """列出满足指定状态的摘要候选公告。
 
         refs 用于限制本轮新公告或指定公告；None 表示扫描该状态的全部候选。
@@ -54,7 +54,8 @@ class SummaryRepository(RepositoryBase):
         )
         query, params = append_limit(query, params, limit)
         return [
-            build_workflow_candidate(row) for row in fetchall(self._conn, query, params)
+            build_summary_candidate_record(row)
+            for row in fetchall(self._conn, query, params)
         ]
 
     def claim_summary_candidates(
@@ -63,7 +64,7 @@ class SummaryRepository(RepositoryBase):
         refs: Sequence[AnnouncementRef] | None = None,
         statuses: Sequence[SummaryStatus] = ("pending",),
         limit: int | None = None,
-    ) -> list[WorkflowCandidate]:
+    ) -> list[SummaryCandidateRecord]:
         """原子领取摘要候选，并立即标记为 running。
 
         SELECT 和 UPDATE 放在同一个 SQL 里，配合 SKIP LOCKED 避免多个 workflow
@@ -110,7 +111,8 @@ class SummaryRepository(RepositoryBase):
         ORDER BY a.announcement_time_ms DESC NULLS LAST, a.announcement_id ASC
         """
         return [
-            build_workflow_candidate(row) for row in fetchall(self._conn, query, params)
+            build_summary_candidate_record(row)
+            for row in fetchall(self._conn, query, params)
         ]
 
     def reset_stale_running_summaries(self, *, timeout_minutes: int) -> int:
