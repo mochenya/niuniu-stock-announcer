@@ -30,3 +30,8 @@ config/watchlist.yaml
 
 # Local agent/project notes
 AGENTS.md
+
+# Local AI tooling / Trellis
+.claude/
+.cursor/
+.trellis/
