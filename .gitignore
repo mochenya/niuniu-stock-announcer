@@ -32,6 +32,8 @@ config/watchlist.yaml
 AGENTS.md
 
 # Local AI tooling / Trellis
+.agents/
 .claude/
+.codex/
 .cursor/
 .trellis/
