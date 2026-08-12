@@ -13,6 +13,19 @@ from niuniu_stock_announcer.config.env import (
 )
 from niuniu_stock_announcer.config.plan_loader import load_china_plan
 from niuniu_stock_announcer.config.settings import load_app_settings
+from niuniu_stock_announcer.db.connection import (
+    create_db_engine,
+    create_session_factory,
+)
+from niuniu_stock_announcer.db.migration import (
+    get_current_revision,
+    upgrade_database,
+)
+from niuniu_stock_announcer.db.unit_of_work import create_uow_factory
+from niuniu_stock_announcer.storage.document import (
+    resolve_storage_path,
+    validate_storage_relative_path,
+)
 
 PUBLIC_BOUNDARIES: tuple[Callable[..., object], ...] = (
     bootstrap,
@@ -20,6 +33,13 @@ PUBLIC_BOUNDARIES: tuple[Callable[..., object], ...] = (
     load_plan_environment,
     resolve_environment_references,
     load_china_plan,
+    create_db_engine,
+    create_session_factory,
+    upgrade_database,
+    get_current_revision,
+    create_uow_factory,
+    validate_storage_relative_path,
+    resolve_storage_path,
 )
 
 
