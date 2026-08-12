@@ -7,9 +7,9 @@ from niuniu_stock_announcer.db.model.china import (
 from niuniu_stock_announcer.db.schema import (
     ChinaAnnouncementRecord,
     ChinaSummaryRecord,
-    ChinaSummaryResult,
     PdfSnapshot,
 )
+from niuniu_stock_announcer.summary.schema import ChinaSummaryResult
 
 
 def map_china_announcement(model: ChinaAnnouncementModel) -> ChinaAnnouncementRecord:

@@ -14,6 +14,7 @@ from niuniu_stock_announcer.filters.schema import (
     TitleFilterEvidence as TitleFilterEvidence,
 )
 from niuniu_stock_announcer.storage.document import StorageRelativePath
+from niuniu_stock_announcer.summary.schema import ChinaSummaryResult
 
 ProviderKey = Literal["cninfo", "sse", "szse"]
 MarketScope = Literal["a_share", "hk"]
@@ -280,24 +281,6 @@ class ChinaMatchPersistResult(_FrozenSchema):
     created: bool
 
 
-class ChinaSummaryResult(_FrozenSchema):
-    """保存 China Agent 输出的权威 JSON 结构。"""
-
-    schema_version: Literal["china-announcement-summary.v1"] = (
-        "china-announcement-summary.v1"
-    )
-    summary_text: str
-    summary_tags: tuple[str, ...]
-
-    @field_validator("summary_text")
-    @classmethod
-    def _require_summary_text(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("summary_text 不能为空")
-        return normalized
-
-
 class ChinaSummaryRecord(_FrozenSchema):
     """描述脱离 ORM Session 的公告摘要任务。"""
 
@@ -334,24 +317,6 @@ class ChinaSummaryRenderContext(_FrozenSchema):
     summary: ChinaSummaryRecord
     announcement: ChinaAnnouncementRecord
     selected_matches: tuple[ChinaMatchRecord, ...]
-
-
-class SummaryCompletion(_FrozenSchema):
-    """描述一次成功摘要的审计字段和权威结果。"""
-
-    agent_key: str
-    agent_version: str
-    prompt_version: str
-    model_provider: str | None = None
-    model_name: str
-    input_tokens: int | None = Field(default=None, ge=0)
-    output_tokens: int | None = Field(default=None, ge=0)
-    result: ChinaSummaryResult
-
-    @field_validator("agent_key", "agent_version", "prompt_version", "model_name")
-    @classmethod
-    def _normalize_required_text(cls, value: str) -> str:
-        return _require_nonblank_text(value)
 
 
 class TelegramDeliveryWrite(_FrozenSchema):

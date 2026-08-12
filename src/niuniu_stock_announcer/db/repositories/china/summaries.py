@@ -1,5 +1,6 @@
 """China 公告摘要任务 Repository。"""
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Literal
 
@@ -25,8 +26,8 @@ from niuniu_stock_announcer.db.schema import (
     ChinaSummaryClaim,
     ChinaSummaryRecord,
     ChinaSummaryRenderContext,
-    SummaryCompletion,
 )
+from niuniu_stock_announcer.summary.schema import SummaryCompletion
 
 
 class ChinaSummaryRepository:
@@ -138,19 +139,45 @@ class ChinaSummaryRepository:
         )
 
     def claim_next(
-        self, *, mode: Literal["pending", "failed"] = "pending"
+        self,
+        *,
+        mode: Literal["pending", "failed"] = "pending",
+        summary_ids: Sequence[int] | None = None,
+        excluded_summary_ids: Sequence[int] = (),
+        maximum_failure_count: int | None = None,
     ) -> ChinaSummaryClaim | None:
         """原子领取一条摘要任务并立即转为 running。
 
         Args:
             mode: `pending` 服务普通恢复，`failed` 只服务显式 retry。
+            summary_ids: 可选摘要 ID 白名单；空序列表示不领取任何记录。
+            excluded_summary_ids: 本轮已经处理、不得再次领取的摘要 ID。
+            maximum_failure_count: `failed` 模式只领取小于该阈值的记录。
 
         Returns:
             领取成功返回脱离 Session 的摘要与公告，队列为空返回 `None`。
         """
+        if maximum_failure_count is not None:
+            if mode != "failed" or maximum_failure_count <= 0:
+                raise ValueError(
+                    "maximum_failure_count 只允许用于 failed 模式且必须大于 0"
+                )
+        normalized_ids = (
+            None if summary_ids is None else tuple(dict.fromkeys(summary_ids))
+        )
+        if normalized_ids == ():
+            return None
+        filters = [ChinaSummaryModel.status == mode]
+        if normalized_ids is not None:
+            filters.append(ChinaSummaryModel.id.in_(normalized_ids))
+        excluded_ids = tuple(dict.fromkeys(excluded_summary_ids))
+        if excluded_ids:
+            filters.append(ChinaSummaryModel.id.not_in(excluded_ids))
+        if maximum_failure_count is not None:
+            filters.append(ChinaSummaryModel.failure_count < maximum_failure_count)
         candidate = (
             select(ChinaSummaryModel.id)
-            .where(ChinaSummaryModel.status == mode)
+            .where(*filters)
             .order_by(ChinaSummaryModel.created_at, ChinaSummaryModel.id)
             .with_for_update(skip_locked=True)
             .limit(1)
@@ -180,6 +207,61 @@ class ChinaSummaryRepository:
             summary=map_china_summary(model),
             announcement=map_china_announcement(announcement),
         )
+
+    def lock_next_exhausted(
+        self,
+        *,
+        minimum_failure_count: int,
+        summary_ids: Sequence[int] | None = None,
+        excluded_summary_ids: Sequence[int] = (),
+    ) -> ChinaSummaryRecord | None:
+        """锁定一条已耗尽重试且已有 PDF 快照的 failed 摘要。
+
+        Args:
+            minimum_failure_count: AppSettings 冻结的最大失败次数。
+            summary_ids: 可选摘要 ID 白名单；空序列表示不读取任何记录。
+            excluded_summary_ids: 本轮已经处理、不得再次读取的摘要 ID。
+
+        Returns:
+            已持有统一 summary 行锁的 failed 记录，没有候选时返回 `None`。
+
+        Raises:
+            ValueError: `minimum_failure_count` 不大于 0。
+        """
+        if minimum_failure_count <= 0:
+            raise ValueError("minimum_failure_count 必须大于 0")
+        normalized_ids = (
+            None if summary_ids is None else tuple(dict.fromkeys(summary_ids))
+        )
+        if normalized_ids == ():
+            return None
+        has_pdf = select(ChinaAnnouncementModel.id).where(
+            ChinaAnnouncementModel.id == ChinaSummaryModel.china_announcement_id,
+            ChinaAnnouncementModel.pdf_storage_relative_path.is_not(None),
+            ChinaAnnouncementModel.pdf_size_bytes.is_not(None),
+            ChinaAnnouncementModel.pdf_sha256.is_not(None),
+        )
+        filters = [
+            ChinaSummaryModel.status == "failed",
+            ChinaSummaryModel.failure_count >= minimum_failure_count,
+            has_pdf.exists(),
+        ]
+        if normalized_ids is not None:
+            filters.append(ChinaSummaryModel.id.in_(normalized_ids))
+        excluded_ids = tuple(dict.fromkeys(excluded_summary_ids))
+        if excluded_ids:
+            filters.append(ChinaSummaryModel.id.not_in(excluded_ids))
+        model = self._session.scalar(
+            select(ChinaSummaryModel)
+            .where(*filters)
+            .order_by(ChinaSummaryModel.created_at, ChinaSummaryModel.id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        if model is None:
+            return None
+        self._locked_summary_ids.add(model.id)
+        return map_china_summary(model)
 
     def save_completed(
         self, summary_id: int, completion: SummaryCompletion

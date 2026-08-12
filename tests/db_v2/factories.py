@@ -8,13 +8,15 @@ from niuniu_stock_announcer.db.schema import (
     CninfoAnnouncementWrite,
     SseAnnouncementWrite,
     SzseAnnouncementWrite,
-    SummaryCompletion,
-    ChinaSummaryResult,
     TelegramDeliveryWrite,
     TelegramDocumentMessageWrite,
     TelegramSummaryMessageWrite,
     TitleFilterDecision,
     TitleFilterEvidence,
+)
+from niuniu_stock_announcer.summary.schema import (
+    ChinaSummaryResult,
+    SummaryCompletion,
 )
 
 
@@ -203,5 +205,8 @@ def summary_completion(text: str = "回购事项摘要") -> SummaryCompletion:
         model_name="test-model",
         input_tokens=100,
         output_tokens=20,
-        result=ChinaSummaryResult(summary_text=text, summary_tags=("回购",)),
+        result=ChinaSummaryResult(
+            summary_text=text,
+            summary_tags=("股份回购", "回购进展", "A股"),
+        ),
     )

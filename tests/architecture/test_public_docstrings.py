@@ -46,10 +46,16 @@ from niuniu_stock_announcer.pipelines.china.provider_resolver import (
     ChinaProviderResolver,
 )
 from niuniu_stock_announcer.pipelines.china.stages.sync import SyncStage
+from niuniu_stock_announcer.pipelines.china.stages.summary import SummaryStage
 from niuniu_stock_announcer.storage.document import (
     resolve_storage_path,
     validate_storage_relative_path,
 )
+from niuniu_stock_announcer.summary.agents.china import (
+    ChinaAnnouncementAgent,
+    SummaryLLMClient,
+)
+from niuniu_stock_announcer.summary.service import SummaryService, extract_pdf_markdown
 
 PUBLIC_BOUNDARIES: tuple[Callable[..., object], ...] = (
     bootstrap,
@@ -85,6 +91,17 @@ PUBLIC_BOUNDARIES: tuple[Callable[..., object], ...] = (
     compile_market_keyword_tasks,
     SyncStage.__init__,
     SyncStage.execute,
+    SummaryLLMClient.__init__,
+    SummaryLLMClient.complete,
+    ChinaAnnouncementAgent.__init__,
+    ChinaAnnouncementAgent.summarize,
+    SummaryService.__init__,
+    SummaryService.ensure_pdf,
+    SummaryService.summarize_document,
+    extract_pdf_markdown,
+    SummaryStage.__init__,
+    SummaryStage.execute,
+    SummaryStage.recover_stale,
 )
 
 
