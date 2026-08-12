@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
     "pymupdf4llm>=0.2.0",
+    "python-dotenv>=1.2.1",
     "python-telegram-bot>=22.7",
     "pyyaml>=6.0.3",
     "ruamel-yaml>=0.19.1",
@@ -42,3 +43,16 @@ a-share-announcement = { git = "https://github.com/mochenya/A-Share-Announcement
 target-version = "py314"
 line-length = 88
 src = ["src"]
+
+[tool.ruff.lint]
+extend-select = ["D417"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+markers = [
+    "live: 访问真实公告 Provider 或公开 PDF 的显式网络契约测试",
+    "postgres: 使用测试专用本机 PostgreSQL 的集成测试",
+]
+pythonpath = ["src"]

@@ -1,0 +1,39 @@
+{
+  "captured_at": "2026-08-12",
+  "provider": "cninfo",
+  "query": {
+    "exchange": "sh",
+    "stock_code": "688090",
+    "window": ["2026-07-13", "2026-08-12"]
+  },
+  "http_top_fields": {
+    "announcements": "list",
+    "categoryList": "null",
+    "classifiedAnnouncements": "null",
+    "hasMore": "bool",
+    "totalAnnouncement": "int",
+    "totalRecordNum": "int",
+    "totalSecurities": "int",
+    "totalpages": "int"
+  },
+  "raw_response": {
+    "totalAnnouncement": 1,
+    "announcements": [
+      {
+        "secCode": "688090",
+        "secName": "瑞松科技",
+        "orgId": "9900039482",
+        "announcementId": "1225450264",
+        "announcementTitle": "关于股东协议转让公司股份完成过户登记的公告",
+        "announcementTime": 1785513600000,
+        "adjunctUrl": "finalpage/2026-08-01/1225450264.PDF",
+        "adjunctSize": 87,
+        "adjunctType": "PDF",
+        "columnId": "251302||253201",
+        "pageColumn": "SHKCB",
+        "announcementType": "01010503||010123||011501||011507"
+      }
+    ],
+    "hasMore": false
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "captured_at": "2026-08-12",
+  "provider": "sse",
+  "query": {
+    "exchange": "sh",
+    "search_keyword": "回购",
+    "window": ["2026-08-11", "2026-08-12"]
+  },
+  "http_top_fields": {
+    "END_DATE": "str",
+    "START_DATE": "str",
+    "TITLE": "str",
+    "pageHelp": "object",
+    "result": "list"
+  },
+  "raw_response": {
+    "START_DATE": "2026-08-11",
+    "END_DATE": "2026-08-12",
+    "TITLE": "回购",
+    "pageHelp": {
+      "total": 1,
+      "pageCount": 1,
+      "pageNo": 1,
+      "pageSize": 100
+    },
+    "result": [
+      [
+        {
+          "BULLETIN_TYPE_DESC": "股权激励及员工持股计划",
+          "IS_HOLDER_DISCLOSE": "0",
+          "ORG_BULLETIN_ID": "6648117673246074",
+          "ORG_FILE_TYPE": 0,
+          "SECURITY_CODE": "600526",
+          "SECURITY_NAME": "菲达环保",
+          "SSEDATE": "2026-08-12",
+          "TITLE": "浙江菲达环保科技股份有限公司股权激励限制性股票回购注销实施公告",
+          "URL": "/disclosure/listedinfo/announcement/c/new/2026-08-12/600526_20260812_VM75.pdf"
+        }
+      ]
+    ]
+  }
+}

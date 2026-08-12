@@ -1,0 +1,34 @@
+{
+  "captured_at": "2026-08-12",
+  "provider": "szse",
+  "query": {
+    "exchange": "sz",
+    "stock_code": "000510",
+    "window": ["2026-07-13", "2026-08-12"]
+  },
+  "http_top_fields": {
+    "announceCount": "int",
+    "data": "list"
+  },
+  "raw_response": {
+    "announceCount": 1,
+    "data": [
+      {
+        "id": "f76354ce-aed7-42f9-9ad8-6530e4a853e8",
+        "annId": 1225426781,
+        "secCode": ["000510"],
+        "secName": ["新金路"],
+        "title": "新金路：四川新金路集团股份有限公司董事、高级管理人员薪酬管理制度（2026年7月）",
+        "publishTime": "2026-07-16 00:00:00",
+        "attachPath": "/disc/disk03/finalpage/2026-07-16/c361eaa5-df79-496a-bef9-693e6908ffca.PDF",
+        "attachFormat": "PDF",
+        "attachSize": 139,
+        "bondType": null,
+        "bigIndustryCode": null,
+        "bigCategoryId": null,
+        "smallCategoryId": null,
+        "channelCode": null
+      }
+    ]
+  }
+}
