@@ -6,6 +6,18 @@ import inspect
 import re
 from collections.abc import Callable
 
+from niuniu_stock_announcer.announcements.document import (
+    AnnouncementDocumentService,
+)
+from niuniu_stock_announcer.announcements.providers.cninfo import (
+    CninfoAnnouncementService,
+)
+from niuniu_stock_announcer.announcements.providers.sse import (
+    SseAnnouncementService,
+)
+from niuniu_stock_announcer.announcements.providers.szse import (
+    SzseAnnouncementService,
+)
 from niuniu_stock_announcer.bootstrap import bootstrap
 from niuniu_stock_announcer.config.env import (
     load_plan_environment,
@@ -22,6 +34,18 @@ from niuniu_stock_announcer.db.migration import (
     upgrade_database,
 )
 from niuniu_stock_announcer.db.unit_of_work import create_uow_factory
+from niuniu_stock_announcer.filters.title import evaluate_title_filter
+from niuniu_stock_announcer.pipelines.china.discovery.market_keywords import (
+    compile_market_keyword_tasks,
+)
+from niuniu_stock_announcer.pipelines.china.discovery.selected_stocks import (
+    compile_selected_stock_tasks,
+)
+from niuniu_stock_announcer.pipelines.china.profile import ChinaMarketProfile
+from niuniu_stock_announcer.pipelines.china.provider_resolver import (
+    ChinaProviderResolver,
+)
+from niuniu_stock_announcer.pipelines.china.stages.sync import SyncStage
 from niuniu_stock_announcer.storage.document import (
     resolve_storage_path,
     validate_storage_relative_path,
@@ -40,6 +64,27 @@ PUBLIC_BOUNDARIES: tuple[Callable[..., object], ...] = (
     create_uow_factory,
     validate_storage_relative_path,
     resolve_storage_path,
+    CninfoAnnouncementService.__init__,
+    CninfoAnnouncementService.query,
+    CninfoAnnouncementService.download_pdf,
+    SseAnnouncementService.__init__,
+    SseAnnouncementService.query,
+    SseAnnouncementService.download_pdf,
+    SzseAnnouncementService.__init__,
+    SzseAnnouncementService.query,
+    SzseAnnouncementService.download_pdf,
+    AnnouncementDocumentService.__init__,
+    AnnouncementDocumentService.ensure_pdf,
+    evaluate_title_filter,
+    ChinaMarketProfile.exchanges_for_scope,
+    ChinaMarketProfile.scope_for_exchange,
+    ChinaProviderResolver.__init__,
+    ChinaProviderResolver.provider_key_for,
+    ChinaProviderResolver.resolve,
+    compile_selected_stock_tasks,
+    compile_market_keyword_tasks,
+    SyncStage.__init__,
+    SyncStage.execute,
 )
 
 

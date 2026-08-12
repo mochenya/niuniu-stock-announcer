@@ -40,19 +40,41 @@ def test_duplicate_match_merges_keywords_without_overwriting_first_decision(
     assert repeated.record.filter_decisions == first.record.filter_decisions
 
 
-def test_duplicate_match_rejects_changed_frozen_context(
+def test_duplicate_match_ignores_changed_filter_and_keeps_first_decision(
     postgres_engine: Engine,
 ) -> None:
     session_factory = create_session_factory(postgres_engine)
     with UnitOfWork(session_factory) as uow:
         record = uow.china_announcements.upsert(announcement())
-        uow.china_matches.record(selected_match(record.id, plan_key="frozen-decision"))
+        first = uow.china_matches.record(
+            selected_match(record.id, plan_key="frozen-decision")
+        )
 
-    with pytest.raises(PersistenceConflictError):
+    with UnitOfWork(session_factory) as uow:
+        repeated = uow.china_matches.record(
+            selected_match(record.id, plan_key="frozen-decision", filtered=True)
+        )
+
+    assert repeated.created is False
+    assert repeated.record.hit_count == 2
+    assert repeated.record.filter_status == "selected"
+    assert repeated.record.filter_decisions == first.record.filter_decisions
+
+
+def test_duplicate_match_rejects_changed_discovery_query_context(
+    postgres_engine: Engine,
+) -> None:
+    session_factory = create_session_factory(postgres_engine)
+    with UnitOfWork(session_factory) as uow:
+        record = uow.china_announcements.upsert(announcement())
+        uow.china_matches.record(selected_match(record.id, plan_key="query-context"))
+
+    with pytest.raises(PersistenceConflictError, match="查询上下文"):
         with UnitOfWork(session_factory) as uow:
-            uow.china_matches.record(
-                selected_match(record.id, plan_key="frozen-decision", filtered=True)
+            changed = selected_match(record.id, plan_key="query-context").model_copy(
+                update={"query_stock_code": "600000"}
             )
+            uow.china_matches.record(changed)
 
 
 def test_pdf_snapshot_is_idempotent_but_cannot_be_overwritten(

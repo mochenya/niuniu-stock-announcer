@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 Exchange = Literal["sh", "sz", "bj", "hk"]
 MarketScope = Literal["a_share", "hk"]
 AnnouncementProvider = Literal["cninfo", "sse", "szse"]
+DiscoveryType = Literal["selected_stocks", "market_keywords"]
 
 PLAN_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9-]{2,63}$")
 ALLOWED_PROVIDERS: dict[Exchange, frozenset[AnnouncementProvider]] = {

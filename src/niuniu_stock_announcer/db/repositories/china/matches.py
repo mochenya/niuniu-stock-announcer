@@ -49,7 +49,9 @@ class ChinaMatchRepository:
         """
         self._session = session
 
-    def record(self, value: ChinaMatchWrite) -> ChinaMatchPersistResult:
+    def record(
+        self, value: ChinaMatchWrite, *, hit_increment: int = 1
+    ) -> ChinaMatchPersistResult:
         """创建 match，或在一致上下文下增加 hit 和关键词证据。
 
         首次 `filter_status/filter_decisions/query` 是审计事实，普通重复发现不能重算覆盖；
@@ -57,14 +59,19 @@ class ChinaMatchRepository:
 
         Args:
             value: 本轮 discovery 和过滤产生的 typed match。
+            hit_increment: 本次已在内存聚合的真实查询命中次数。
 
         Returns:
             最新 match 及是否由本次创建。
 
         Raises:
+            ValueError: `hit_increment` 小于 1。
             PersistenceConflictError: 已有记录的冻结上下文与本次不一致。
         """
+        if hit_increment < 1:
+            raise ValueError("hit_increment 必须至少为 1")
         values = value.model_dump(mode="python")
+        values["hit_count"] = hit_increment
         values["matched_search_keywords"] = list(value.matched_search_keywords)
         values["filter_decisions"] = [
             decision.model_dump(mode="json") for decision in value.filter_decisions
@@ -92,26 +99,28 @@ class ChinaMatchRepository:
         if model is None:
             raise RecordNotFoundError("match 冲突后未找到已存在记录")
         existing = _map_match(model)
-        frozen_fields = (
+        identity_context_fields = (
             "discovery_type",
             "market_scope",
             "query_exchange",
             "query_stock_code",
             "query_provider_key",
-            "filter_status",
-            "filter_decisions",
         )
         if any(
-            getattr(existing, field) != getattr(value, field) for field in frozen_fields
+            getattr(existing, field) != getattr(value, field)
+            for field in identity_context_fields
         ):
-            raise PersistenceConflictError("同一公告与 Plan 的首次 match 上下文不一致")
+            raise PersistenceConflictError(
+                "同一公告与 Plan 的 discovery 查询上下文不一致"
+            )
 
+        # 当前规则可能已变化；冲突路径只更新可聚合证据，不比较也不覆盖首次过滤决定。
         model.matched_search_keywords = list(
             dict.fromkeys(
                 [*model.matched_search_keywords, *value.matched_search_keywords]
             )
         )
-        model.hit_count += 1
+        model.hit_count += hit_increment
         model.last_seen_at = func.now()
         self._session.flush()
         return ChinaMatchPersistResult(record=_map_match(model), created=False)

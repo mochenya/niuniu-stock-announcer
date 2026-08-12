@@ -14,8 +14,29 @@ REQUIRED_LIVE_NODE_IDS = frozenset(
         "tests/live/test_provider_queries.py::test_cninfo_market_route_contract[cninfo-hk]",
         "tests/live/test_provider_queries.py::test_sse_keyword_route_contract",
         "tests/live/test_provider_queries.py::test_szse_stock_route_contract",
+        "tests/live/test_provider_queries.py::test_cninfo_pdf_contract",
+        "tests/live/test_provider_queries.py::test_sse_pdf_contract",
+        "tests/live/test_provider_queries.py::test_szse_pdf_contract",
     }
 )
+LIVE_CASE_RESULTS: dict[str, str] = {}
+
+
+@pytest.fixture
+def record_live_contract(request: pytest.FixtureRequest):
+    """记录单个 live case 的脱敏合同结果，供会话末尾审计。
+
+    Args:
+        request: 当前测试节点，用于把结果关联到完整 nodeid。
+
+    Returns:
+        接受一行脱敏结果摘要的回调。
+    """
+
+    def record(detail: str) -> None:
+        LIVE_CASE_RESULTS[request.node.nodeid] = detail
+
+    return record
 
 
 @pytest.fixture(autouse=True)
@@ -25,10 +46,9 @@ def require_explicit_live_gate(request: pytest.FixtureRequest) -> None:
     Args:
         request: 当前 pytest 配置和测试节点。
     """
-    marker_expression = request.config.getoption("-m") or ""
     if os.environ.get("NIUNIU_RUN_LIVE_TESTS") != "1":
         pytest.skip("需要设置 NIUNIU_RUN_LIVE_TESTS=1")
-    if "live" not in marker_expression:
+    if not _live_marker_selected(request.config):
         pytest.skip("需要显式使用 -m live")
 
 
@@ -50,21 +70,31 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             unexpected_outcomes.extend(
                 report.nodeid for report in reporter.stats.get(category, [])
             )
-    if not missing and not unexpected_outcomes:
-        return
-    session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    unreported = sorted(REQUIRED_LIVE_NODE_IDS - LIVE_CASE_RESULTS.keys())
+    if missing or unexpected_outcomes or unreported:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if reporter is not None:
-        reporter.write_sep("=", "live suite 完整性失败")
-        if missing:
-            reporter.write_line("缺少关键用例: " + ", ".join(missing))
-        if unexpected_outcomes:
-            reporter.write_line(
-                "出现 skip/xfail/xpass: " + ", ".join(unexpected_outcomes)
-            )
+        if session.exitstatus == pytest.ExitCode.OK:
+            reporter.write_sep("=", "live suite 合同结果")
+            for nodeid in sorted(REQUIRED_LIVE_NODE_IDS):
+                reporter.write_line(f"{nodeid}: {LIVE_CASE_RESULTS[nodeid]}")
+        else:
+            reporter.write_sep("=", "live suite 完整性失败")
+            if missing:
+                reporter.write_line("缺少关键用例: " + ", ".join(missing))
+            if unexpected_outcomes:
+                reporter.write_line(
+                    "出现 skip/xfail/xpass: " + ", ".join(unexpected_outcomes)
+                )
+            if unreported:
+                reporter.write_line("缺少合同结果: " + ", ".join(unreported))
 
 
 def _live_gate_enabled(config: pytest.Config) -> bool:
-    marker_expression = config.getoption("-m") or ""
-    return (
-        os.environ.get("NIUNIU_RUN_LIVE_TESTS") == "1" and "live" in marker_expression
+    return os.environ.get("NIUNIU_RUN_LIVE_TESTS") == "1" and _live_marker_selected(
+        config
     )
+
+
+def _live_marker_selected(config: pytest.Config) -> bool:
+    return (config.getoption("-m") or "").strip() == "live"

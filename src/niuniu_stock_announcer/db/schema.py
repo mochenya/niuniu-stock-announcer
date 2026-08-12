@@ -8,13 +8,17 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from niuniu_stock_announcer.filters.schema import (
+    FilterStatus,
+    TitleFilterDecision,
+    TitleFilterEvidence as TitleFilterEvidence,
+)
 from niuniu_stock_announcer.storage.document import StorageRelativePath
 
 ProviderKey = Literal["cninfo", "sse", "szse"]
 MarketScope = Literal["a_share", "hk"]
 Exchange = Literal["sh", "sz", "bj", "hk"]
 DiscoveryType = Literal["selected_stocks", "market_keywords"]
-FilterStatus = Literal["selected", "filtered"]
 SummaryStatus = Literal["pending", "running", "completed", "failed", "skipped"]
 TelegramMessageStatus = Literal["pending", "running", "sent", "failed", "unknown"]
 
@@ -196,34 +200,6 @@ class SzseAnnouncementRecord(SzseAnnouncementWrite):
     id: int
     first_seen_at: datetime
     last_seen_at: datetime
-
-
-class TitleFilterEvidence(_FrozenSchema):
-    """保存标题排除规则实际评估的输入和命中项。"""
-
-    evaluated_title: str
-    configured_keywords: tuple[str, ...]
-    matched_keywords: tuple[str, ...]
-
-
-class TitleFilterDecision(_FrozenSchema):
-    """保存首版标题排除规则的一次版本化决定。"""
-
-    filter_type: Literal["title_exclusion"] = "title_exclusion"
-    schema_version: Literal["v1"] = "v1"
-    outcome: FilterStatus
-    reason_code: Literal["passed", "excluded_keyword"]
-    evidence: TitleFilterEvidence
-
-    @model_validator(mode="after")
-    def _validate_projection(self) -> TitleFilterDecision:
-        filtered = bool(self.evidence.matched_keywords)
-        if filtered != (self.outcome == "filtered"):
-            raise ValueError("标题命中证据与 outcome 不一致")
-        expected_reason = "excluded_keyword" if filtered else "passed"
-        if self.reason_code != expected_reason:
-            raise ValueError("标题命中证据与 reason_code 不一致")
-        return self
 
 
 class ChinaMatchWrite(_FrozenSchema):
