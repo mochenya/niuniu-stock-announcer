@@ -1,5 +1,6 @@
 """共享 Telegram outbox Repository。"""
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Literal
 
@@ -132,6 +133,23 @@ class TelegramRepository:
         )
         return tuple(_map_delivery(model) for model in models)
 
+    def get_delivery(self, delivery_id: int) -> TelegramDeliveryRecord:
+        """按内部 ID 读取一条冻结逻辑投递。
+
+        Args:
+            delivery_id: Telegram delivery 内部主键。
+
+        Returns:
+            脱离 Session 的冻结 delivery。
+
+        Raises:
+            RecordNotFoundError: delivery 不存在。
+        """
+        model = self._session.get(TelegramDeliveryModel, delivery_id)
+        if model is None:
+            raise RecordNotFoundError(f"Telegram delivery 不存在: {delivery_id}")
+        return _map_delivery(model)
+
     def insert_summary_message(
         self, value: TelegramSummaryMessageWrite
     ) -> TelegramSummaryMessageRecord:
@@ -216,19 +234,39 @@ class TelegramRepository:
         return record
 
     def claim_next_summary(
-        self, *, mode: Literal["pending", "failed"] = "pending"
+        self,
+        *,
+        mode: Literal["pending", "failed"] = "pending",
+        delivery_ids: Sequence[int] | None = None,
+        excluded_message_ids: Sequence[int] = (),
     ) -> TelegramSummaryClaim | None:
         """原子领取文本消息；任何路径都不包含 `unknown`。
 
         Args:
             mode: `pending` 服务普通恢复，`failed` 只服务显式 retry。
+            delivery_ids: 可选 delivery ID 白名单；空序列表示无工作。
+            excluded_message_ids: 本轮已处理、不得再次领取的消息 ID。
 
         Returns:
             领取成功返回冻结消息与 target，队列为空返回 `None`。
         """
+        _validate_claim_mode(mode)
+        filters = [TelegramSummaryMessageModel.status == mode]
+        normalized_delivery_ids = _normalize_optional_ids(delivery_ids)
+        if normalized_delivery_ids == ():
+            return None
+        if normalized_delivery_ids is not None:
+            filters.append(
+                TelegramSummaryMessageModel.telegram_delivery_id.in_(
+                    normalized_delivery_ids
+                )
+            )
+        excluded_ids = _normalize_ids(excluded_message_ids)
+        if excluded_ids:
+            filters.append(TelegramSummaryMessageModel.id.not_in(excluded_ids))
         candidate = (
             select(TelegramSummaryMessageModel.id)
-            .where(TelegramSummaryMessageModel.status == mode)
+            .where(*filters)
             .order_by(
                 TelegramSummaryMessageModel.created_at,
                 TelegramSummaryMessageModel.id,
@@ -260,16 +298,23 @@ class TelegramRepository:
         )
 
     def claim_next_document(
-        self, *, mode: Literal["pending", "failed"] = "pending"
+        self,
+        *,
+        mode: Literal["pending", "failed"] = "pending",
+        delivery_ids: Sequence[int] | None = None,
+        excluded_message_ids: Sequence[int] = (),
     ) -> TelegramDocumentClaim | None:
         """在同一 delivery 文本已 sent 后原子领取 document。
 
         Args:
             mode: `pending` 服务普通恢复，`failed` 只服务显式 retry。
+            delivery_ids: 可选 delivery ID 白名单；空序列表示无工作。
+            excluded_message_ids: 本轮已处理、不得再次领取的消息 ID。
 
         Returns:
             领取成功返回冻结消息与 target，队列为空返回 `None`。
         """
+        _validate_claim_mode(mode)
         summary_sent = exists(
             select(TelegramSummaryMessageModel.id).where(
                 TelegramSummaryMessageModel.telegram_delivery_id
@@ -277,9 +322,22 @@ class TelegramRepository:
                 TelegramSummaryMessageModel.status == "sent",
             )
         )
+        filters = [TelegramDocumentMessageModel.status == mode, summary_sent]
+        normalized_delivery_ids = _normalize_optional_ids(delivery_ids)
+        if normalized_delivery_ids == ():
+            return None
+        if normalized_delivery_ids is not None:
+            filters.append(
+                TelegramDocumentMessageModel.telegram_delivery_id.in_(
+                    normalized_delivery_ids
+                )
+            )
+        excluded_ids = _normalize_ids(excluded_message_ids)
+        if excluded_ids:
+            filters.append(TelegramDocumentMessageModel.id.not_in(excluded_ids))
         candidate = (
             select(TelegramDocumentMessageModel.id)
-            .where(TelegramDocumentMessageModel.status == mode, summary_sent)
+            .where(*filters)
             .order_by(
                 TelegramDocumentMessageModel.created_at,
                 TelegramDocumentMessageModel.id,
@@ -482,8 +540,8 @@ class TelegramRepository:
                 .where(model.status == "running", model.started_at < started_before)
                 .values(
                     status="unknown",
-                    failure_reason="stale running Telegram outcome unknown",
-                    failure_log="stale running message may already have been sent",
+                    failure_reason="stale running Telegram 结果不可确认",
+                    failure_log="stale running 消息可能已经发送，禁止自动重试",
                     updated_at=func.now(),
                 )
             )
@@ -519,6 +577,19 @@ class TelegramRepository:
             .returning(model_type)
         ).one_or_none()
         if model is None:
+            existing = self._session.get(model_type, message_id)
+            if existing is not None and all(
+                (
+                    existing.status == "sent",
+                    existing.result_chat_id == result_chat_id,
+                    existing.result_message_thread_id == result_message_thread_id,
+                    existing.telegram_message_id == telegram_message_id,
+                    existing.telegram_message_url == telegram_message_url,
+                )
+            ):
+                # COMMIT 响应丢失时调用方会只重试数据库终态保存；接受完全相同结果
+                # 可以确认已经落库，同时严禁用不同外部 ID 覆盖历史发送事实。
+                return existing
             raise InvalidStateTransitionError("只有 running Telegram 消息可以保存成功")
         return model
 
@@ -546,7 +617,33 @@ class TelegramRepository:
             .returning(model_type)
         ).one_or_none()
         if model is None:
+            existing = self._session.get(model_type, message_id)
+            if (
+                existing is not None
+                and existing.status == status
+                and existing.failure_reason == normalized_reason
+                and existing.failure_log == failure_log
+            ):
+                return existing
             raise InvalidStateTransitionError(
                 "只有 running Telegram 消息可以保存失败或 unknown"
             )
         return model
+
+
+def _normalize_optional_ids(values: Sequence[int] | None) -> tuple[int, ...] | None:
+    if values is None:
+        return None
+    return _normalize_ids(values)
+
+
+def _validate_claim_mode(mode: str) -> None:
+    if mode not in {"pending", "failed"}:
+        raise ValueError("Telegram claim mode 只能是 pending 或 failed")
+
+
+def _normalize_ids(values: Sequence[int]) -> tuple[int, ...]:
+    normalized = tuple(dict.fromkeys(values))
+    if any(value <= 0 for value in normalized):
+        raise ValueError("内部 ID 必须全部大于 0")
+    return normalized

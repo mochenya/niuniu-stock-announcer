@@ -34,7 +34,21 @@ from niuniu_stock_announcer.db.migration import (
     upgrade_database,
 )
 from niuniu_stock_announcer.db.unit_of_work import create_uow_factory
+from niuniu_stock_announcer.delivery.document import open_verified_document
+from niuniu_stock_announcer.delivery.service import (
+    ChinaDeliveryMaterializer,
+    DeliveryService,
+)
 from niuniu_stock_announcer.filters.title import evaluate_title_filter
+from niuniu_stock_announcer.im.telegram.run_log import (
+    TelegramRunLogNotifier,
+    format_run_log_message,
+)
+from niuniu_stock_announcer.im.telegram.sender import TelegramSender
+from niuniu_stock_announcer.im.telegram.target import (
+    parse_run_log_target,
+    parse_telegram_topic_url,
+)
 from niuniu_stock_announcer.pipelines.china.discovery.market_keywords import (
     compile_market_keyword_tasks,
 )
@@ -46,6 +60,7 @@ from niuniu_stock_announcer.pipelines.china.provider_resolver import (
     ChinaProviderResolver,
 )
 from niuniu_stock_announcer.pipelines.china.stages.sync import SyncStage
+from niuniu_stock_announcer.pipelines.china.stages.delivery import DeliveryStage
 from niuniu_stock_announcer.pipelines.china.stages.summary import SummaryStage
 from niuniu_stock_announcer.storage.document import (
     resolve_storage_path,
@@ -68,6 +83,18 @@ PUBLIC_BOUNDARIES: tuple[Callable[..., object], ...] = (
     upgrade_database,
     get_current_revision,
     create_uow_factory,
+    DeliveryService.render,
+    ChinaDeliveryMaterializer.__init__,
+    ChinaDeliveryMaterializer.__call__,
+    open_verified_document,
+    parse_telegram_topic_url,
+    parse_run_log_target,
+    TelegramSender.__init__,
+    TelegramSender.send_text,
+    TelegramSender.send_document,
+    TelegramRunLogNotifier.__init__,
+    TelegramRunLogNotifier.notify,
+    format_run_log_message,
     validate_storage_relative_path,
     resolve_storage_path,
     CninfoAnnouncementService.__init__,
@@ -102,6 +129,9 @@ PUBLIC_BOUNDARIES: tuple[Callable[..., object], ...] = (
     SummaryStage.__init__,
     SummaryStage.execute,
     SummaryStage.recover_stale,
+    DeliveryStage.__init__,
+    DeliveryStage.execute,
+    DeliveryStage.recover_stale,
 )
 
 

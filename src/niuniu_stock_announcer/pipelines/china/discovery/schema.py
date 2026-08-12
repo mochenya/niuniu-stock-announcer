@@ -73,13 +73,6 @@ class DiscoveryCandidate(_FrozenSchema):
         return self
 
 
-class ResolvedTelegramTarget(_FrozenSchema):
-    """保存 target URL 在外部调用前解析出的 Bot API 地址。"""
-
-    chat_id: int
-    message_thread_id: int | None = None
-
-
 SyncErrorPhase = Literal["resolve", "query", "map", "persist"]
 
 

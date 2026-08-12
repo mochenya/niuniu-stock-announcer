@@ -24,10 +24,10 @@ from niuniu_stock_announcer.db.schema import (
 )
 from niuniu_stock_announcer.db.unit_of_work import UnitOfWork
 from niuniu_stock_announcer.filters.title import evaluate_title_filter
+from niuniu_stock_announcer.im.telegram.schema import TelegramTarget
 from niuniu_stock_announcer.pipelines.china.discovery.schema import (
     DiscoveryCandidate,
     DiscoveryQueryTask,
-    ResolvedTelegramTarget,
     SyncActivation,
     SyncError,
     SyncErrorPhase,
@@ -39,7 +39,7 @@ from niuniu_stock_announcer.pipelines.china.provider_resolver import (
 from niuniu_stock_announcer.pipelines.china.schema import TelegramTargetPlan
 
 UnitOfWorkFactory = Callable[[], AbstractContextManager[UnitOfWork]]
-TelegramTargetParser = Callable[[str], ResolvedTelegramTarget]
+TelegramTargetParser = Callable[[str], TelegramTarget]
 TerminalDeliveryMaterializer = Callable[[UnitOfWork, int, int], None]
 
 
@@ -255,7 +255,7 @@ class SyncStage:
     def _persist_candidate(
         self,
         candidate: DiscoveryCandidate,
-        resolved_target: ResolvedTelegramTarget | None,
+        resolved_target: TelegramTarget | None,
     ) -> _PersistOutcome:
         with self._uow_factory() as uow:
             announcement = uow.china_announcements.upsert(
@@ -416,7 +416,7 @@ def _match_write(
 
 def _delivery_write(
     target: TelegramTargetPlan,
-    resolved: ResolvedTelegramTarget,
+    resolved: TelegramTarget,
     *,
     summary_id: int,
     plan_key: str,

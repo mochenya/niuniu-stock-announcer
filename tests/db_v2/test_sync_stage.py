@@ -31,10 +31,8 @@ from niuniu_stock_announcer.db.model import (
 )
 from niuniu_stock_announcer.db.schema import TelegramSummaryMessageWrite
 from niuniu_stock_announcer.db.unit_of_work import UnitOfWork
-from niuniu_stock_announcer.pipelines.china.discovery.schema import (
-    DiscoveryQueryTask,
-    ResolvedTelegramTarget,
-)
+from niuniu_stock_announcer.im.telegram.schema import TelegramTarget
+from niuniu_stock_announcer.pipelines.china.discovery.schema import DiscoveryQueryTask
 from niuniu_stock_announcer.pipelines.china.provider_resolver import (
     ChinaProviderResolver,
 )
@@ -187,8 +185,8 @@ def _target(url: str = "https://t.me/c/123456/9") -> TelegramTargetPlan:
     )
 
 
-def _target_parser(_url: str) -> ResolvedTelegramTarget:
-    return ResolvedTelegramTarget(chat_id=-100123456, message_thread_id=9)
+def _target_parser(_url: str) -> TelegramTarget:
+    return TelegramTarget(chat_id=-100123456, message_thread_id=9)
 
 
 def _no_materialize(_uow: UnitOfWork, _summary_id: int, _delivery_id: int) -> None:
@@ -607,7 +605,7 @@ def test_new_plan_on_completed_summary_materializes_new_delivery_in_same_uow(
 def test_invalid_target_fails_before_provider_query(postgres_engine: Engine) -> None:
     provider = _FakeProvider("cninfo", {})
 
-    def invalid_target(_url: str) -> ResolvedTelegramTarget:
+    def invalid_target(_url: str) -> TelegramTarget:
         raise ValueError("invalid Telegram target")
 
     stage = _stage(
