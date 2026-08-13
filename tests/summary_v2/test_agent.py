@@ -74,9 +74,9 @@ def test_parser_preserves_fenced_json_and_three_to_six_tag_contract() -> None:
 
 
 def test_migrated_prompt_and_user_content_preserve_v1_contract() -> None:
-    legacy_prompt = Path("src/summary/prompts/announcement_summary.md").read_text(
-        encoding="utf-8"
-    )
+    legacy_prompt = Path(
+        "src/niuniu_stock_announcer/summary/prompts/announcement_summary.md"
+    ).read_text(encoding="utf-8")
 
     assert load_system_prompt() == legacy_prompt.strip()
     user_content = build_summary_user_content(_request())

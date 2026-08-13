@@ -21,12 +21,18 @@ def test_market_and_telegram_models_have_no_cross_owner_orm_relationships() -> N
 
 
 def test_business_runtime_never_calls_create_all_or_implicit_upgrade() -> None:
+    explicit_database_boundaries = {"bootstrap.py", "cli.py", "migration.py"}
     runtime_files = [
         path
         for path in PACKAGE_ROOT.rglob("*.py")
-        if "migrations" not in path.parts and path.name != "migration.py"
+        if "migrations" not in path.parts
+        and path.name not in explicit_database_boundaries
     ]
     for path in runtime_files:
         source = path.read_text(encoding="utf-8")
         assert "create_all(" not in source, path
         assert "upgrade_database(" not in source, path
+
+    for name in explicit_database_boundaries - {"migration.py"}:
+        source = (PACKAGE_ROOT / name).read_text(encoding="utf-8")
+        assert "create_all(" not in source, name

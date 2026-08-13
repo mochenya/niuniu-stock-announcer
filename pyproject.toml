@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-niuniu-stock = "cli:app"
+niuniu-stock = "niuniu_stock_announcer.cli:app"
 
 [dependency-groups]
 dev = [

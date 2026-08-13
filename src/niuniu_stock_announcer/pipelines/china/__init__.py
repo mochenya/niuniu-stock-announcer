@@ -5,5 +5,15 @@ from niuniu_stock_announcer.pipelines.china.schema import (
     MarketKeywordsPlan,
     SelectedStocksPlan,
 )
+from niuniu_stock_announcer.pipelines.china.pipeline import (
+    ChinaPipeline,
+    ChinaPipelineResult,
+)
 
-__all__ = ["ChinaPlan", "MarketKeywordsPlan", "SelectedStocksPlan"]
+__all__ = [
+    "ChinaPipeline",
+    "ChinaPipelineResult",
+    "ChinaPlan",
+    "MarketKeywordsPlan",
+    "SelectedStocksPlan",
+]

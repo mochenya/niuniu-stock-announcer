@@ -1,130 +1,83 @@
-# 牛牛公告员
+# 牛牛股票公告员
 
-> **NiuNiu Stock Announcer** — 本地化的 A 股 / 港股公告监控与智能摘要推送工具
+牛牛股票公告员（NiuNiu Stock Announcer）是一个本地 Python CLI，用 China Plan 监控沪、深、北、港
+市场公告，按标题规则筛选，使用 PDF 与摘要 Agent 生成不可变投递 payload，并可靠地投递到 Telegram。
 
-[![Python 3.14+](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+## 特性
 
----
+- `selected_stocks` 精选个股和 `market_keywords` 全市场关键词两种独立 Plan。
+- `sh/sz/bj/hk` 的 Provider 路由由 Plan 根 mapping 冻结，显式路由失败不自动 fallback。
+- PostgreSQL + Alembic v2 schema，公告、match、摘要和 Telegram child 具有明确身份与恢复状态。
+- 摘要与 Telegram 外部调用前提交 `running`；文本成功后才发送 document；timeout/network/stale 进入
+  `unknown`，不自动重发。
+- PDF 使用 storage root 下的规范相对路径、size 与 SHA-256 快照；Telegram 没有远程 URL fallback。
 
-## 功能特性
+## 安装与配置
 
-| 功能 | 说明 |
-|------|------|
-| **多市场覆盖** | 沪（sh）、深（sz）、北（bj）、港（hk）四大交易所 |
-| **灵活数据源** | 上交所 / 深交所 / 巨潮资讯，按市场可配置切换 |
-| **关键词过滤** | 全局 + 个股级别的标题排除关键词，精准筛选 |
-| **PDF 智能摘要** | PyMuPDF 提取 + LLM 结构化总结，生成摘要文本与标签 |
-| **Telegram 推送** | A 股 / 港股分别投递到不同话题，支持文本 + PDF 附件 |
-| **完善的状态管理** | PostgreSQL 持久化，自动恢复异常状态，支持失败重试 |
-| **运行日志通知** | 可选将每次运行结果推送到 Telegram，便于监控 |
-
-## 快速开始
-
-### 环境要求
-
-- Python >= 3.14
-- PostgreSQL
-- [uv](https://docs.astral.sh/uv/) 包管理器
-
-### 安装
+环境要求：Python `>=3.14`、PostgreSQL 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-# 克隆项目
-git clone <your-repo-url>
-cd niuniu-stock-announcer
-
-# 安装依赖
 uv sync
-
-# 配置环境变量
 cp .env.example .env
-# 编辑 .env，填写数据库、LLM、Telegram 等配置
-
-# 配置监控股票列表
-cp config/watchlist.example.yaml config/watchlist.yaml
-# 编辑 watchlist.yaml，添加你关注的股票
-
-# 初始化数据库
-uv run niuniu-stock init-db
+uv run niuniu-stock db upgrade
 ```
 
-### 运行
+`.env` 只保存数据库、LLM、Telegram token、storage 和超时等基础设施设置。真实 Plan 由部署管理，
+不要写入仓库；可以从两个示例开始：
 
 ```bash
-# 手动执行一次完整工作流（同步 + 摘要 + 推送）
-uv run niuniu-stock run
+cp config/plan.selected.example.yaml /path/to/china-selected-stocks.yaml
+cp config/plan.keywords.example.yaml /path/to/china-market-keywords.yaml
+```
 
-# 仅同步公告（不做摘要和推送）
-uv run niuniu-stock sync
+Plan 根节点必须包含 `market: china`、稳定的 `plan_key`、正整数 `window_days` 和非空
+`market_scopes`。环境引用只支持完整标量 `${ENV_NAME}`，进程环境优先于 `.env`。
 
-# 处理数据库中待处理的摘要和推送
+## CLI
+
+```bash
+# 校验单份 Plan，不连接数据库或外部服务
+uv run niuniu-stock plan validate --plan /path/to/china-selected-stocks.yaml
+
+# 执行一份 Plan；scheduler 对多份 Plan 分别调用
+uv run niuniu-stock sync --plan /path/to/china-selected-stocks.yaml
+uv run niuniu-stock run --plan /path/to/china-selected-stocks.yaml
+
+# 全局恢复：不接受 Plan，不领取 unknown
 uv run niuniu-stock process-pending
-
-# 重试失败的任务
+uv run niuniu-stock retry-failed summary
+uv run niuniu-stock retry-failed telegram
 uv run niuniu-stock retry-failed all
+
+# 数据库只提供显式 migration 入口
+uv run niuniu-stock db current
+uv run niuniu-stock db upgrade
 ```
 
-## 使用指南
+`sync` 只执行 discovery。`run` 只处理本轮新 selected match/delivery activation；已有公告被另一份
+Plan 命中时复用共享摘要，但仍可创建当前 Plan 的新 target delivery。target 和 payload 创建后不可变，
+修改 Plan 不会重发历史记录。
 
-### 管理监控股票
+## Scheduler
+
+[`scripts/run_workflow.sh`](scripts/run_workflow.sh) 使用一把 `flock` 互斥锁，依次执行
+`RUN_WORKFLOW_SELECTED_PLAN_FILE` 与 `RUN_WORKFLOW_KEYWORD_PLAN_FILE` 指定的两份 Plan，最后默认
+执行一次 `process-pending`。它只读取部署目录中的真实 `.env` 和 Plan；切换时应先停止旧 scheduler，
+避免新旧系统并行发送。
+
+## 架构与安全
+
+[`docs/architecture.md`](docs/architecture.md) 说明唯一 `bootstrap.py` composition root、China Pipeline、
+Stage、Service、Agent、IM adapter 和 ORM/Repository 边界。默认 `uv run pytest -q` 完全离线；真实
+Provider/PDF 测试必须显式设置 `NIUNIU_RUN_LIVE_TESTS=1 -m live`。本仓库不自动调用真实 LLM、发送
+Telegram 或修改部署数据库、`.env`、Plan 和 scheduler。
+
+## 质量检查
 
 ```bash
-# 添加股票到监列表（自动验证是否在交易所可查）
-uv run niuniu-stock config add stock sh 600000
-uv run niuniu-stock config add stock hk 00700
-
-# 添加全局排除关键词
-uv run niuniu-stock config add global-keyword "业绩预告"
+uv run ruff format --check .
+uv run ruff check .
+uv run pytest -q
 ```
 
-### 命令一览
-
-| 命令 | 说明 |
-|------|------|
-| `init-db` | 初始化数据库表结构 |
-| `init-db --reset --yes` | ⚠️ 重置数据库（会删除所有数据） |
-| `sync` | 同步公告到数据库 |
-| `run` | 完整工作流：同步 → 摘要 → 推送 |
-| `process-pending` | 处理待处理的摘要和推送任务 |
-| `retry-failed summary` | 重试失败的摘要任务 |
-| `retry-failed delivery` | 重试失败的推送任务 |
-| `retry-failed all` | 重试所有失败任务（摘要耗尽后转为直发 PDF） |
-| `config add stock <市场> <代码>` | 添加监控股票 |
-| `config add global-keyword <关键词>` | 添加全局排除关键词 |
-
-## 技术栈
-
-| 类别 | 技术 |
-|------|------|
-| 语言 | Python 3.14+ |
-| CLI 框架 | Typer |
-| 数据库 | PostgreSQL + psycopg 3 |
-| 数据模型 | Pydantic v2 |
-| PDF 提取 | PyMuPDF (pymupdf4llm) |
-| LLM 集成 | OpenAI 兼容 API |
-| 消息推送 | python-telegram-bot |
-| 日志 | Loguru |
-| 代码规范 | Ruff |
-
-> 详细架构和项目结构说明见 [docs/architecture.md](docs/architecture.md)
-
-## 配置说明
-
-项目使用两个配置文件：
-
-- **`.env`**：数据库连接、LLM API、Telegram Bot Token 等敏感配置
-- **`config/watchlist.yaml`**：监控股票列表、数据源路由、过滤规则
-
-> 完整配置参考见 [docs/configuration.md](docs/configuration.md)
-
-## 安全提示
-
-- `.env`、`config/watchlist.yaml`、API Key、Telegram Bot Token 等均为本地配置，**请勿提交到版本控制**
-- `init-db --reset --yes` 会删除所有数据，请谨慎使用
-- Telegram 推送会发送实际消息，请确认配置正确
-
-## 许可证
-
-本项目基于 [MIT License](LICENSE) 开源。
+详见 [LICENSE](LICENSE)。

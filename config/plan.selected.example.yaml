@@ -1,0 +1,39 @@
+market: china
+plan_type: selected_stocks
+plan_key: china-selected-stocks
+window_days: 3
+
+announcement_providers:
+  sh: sse
+  sz: szse
+  bj: cninfo
+  hk: cninfo
+
+market_scopes:
+  a_share:
+    stocks:
+      - exchange: sh
+        stock_code: "688090"
+        name: 示例公司
+      - exchange: sz
+        stock_code: "000510"
+    filters:
+      title_exclude_keywords:
+        - 业绩说明会
+    delivery:
+      telegram:
+        target_key: china-selected-a-share
+        target_url: ${TELEGRAM_A_SHARE_TOPIC_URL}
+        send_original_document: false
+  hk:
+    stocks:
+      - exchange: hk
+        stock_code: "06869"
+    filters:
+      title_exclude_keywords:
+        - 月报表
+    delivery:
+      telegram:
+        target_key: china-selected-hk
+        target_url: ${TELEGRAM_HK_TOPIC_URL}
+        send_original_document: false
