@@ -202,9 +202,7 @@ class ApplicationContext:
                     ),
                     sync=None if sync is None else _run_log_sync(sync),
                     summary=None if summary is None else _run_log_stage(summary),
-                    delivery=None
-                    if delivery is None
-                    else _run_log_stage(delivery),
+                    delivery=None if delivery is None else _run_log_stage(delivery),
                     error=error,
                 )
             )
@@ -476,8 +474,6 @@ def _run_report_status(
         return "warning"
     if summary is not None and summary.failed_count:
         return "warning"
-    if delivery is not None and (
-        delivery.failed_count or delivery.unknown_count
-    ):
+    if delivery is not None and (delivery.failed_count or delivery.unknown_count):
         return "warning"
     return "success"
